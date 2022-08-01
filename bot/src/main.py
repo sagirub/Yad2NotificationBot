@@ -21,8 +21,7 @@ from error_handler import error_handler
 logger = logging.getLogger(__name__)
 
 # TODO: constatns to set as docker env variables
-TOKEN = "TOKEN"
-NAME = "NAME"
+TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
 LOG_FILE_PATH = 'bot.log'
 
 def load_conversation_handler(application: Application) -> None:
