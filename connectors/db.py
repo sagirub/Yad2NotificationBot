@@ -10,13 +10,19 @@ DATABASE_PATH = 'my_database.db'
 
 db = SqliteDatabase(DATABASE_PATH)
 
+
 class BaseModel(Model):
     class Meta:
         database = db
 
 
+class User(BaseModel):
+    chat_id = BigIntegerField(primary_key=True)
+    name = CharField()
+
+
 class Search(BaseModel):
-    chat_id = BigIntegerField(unique=False)
+    User = ForeignKeyField(User, backref='searches')
     search_name = CharField()
     search_url = CharField()
 
@@ -25,6 +31,7 @@ class Item(BaseModel):
     item_id = CharField(primary_key=True)
     search = ForeignKeyField(Search, backref='items')
 
+
 def create_tables() -> None:
     with db:
-        db.create_tables([Search, Item])
+        db.create_tables([User, Search, Item])
