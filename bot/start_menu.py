@@ -9,13 +9,18 @@ from telegram.ext import CallbackContext
 # Bot constatns
 from constants import *
 
+from connectors.db import User
+
 # Init logger
 logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     """Send a message when the command /start is issued."""
     
-    logger.info(f'new user start chat with the bot: user_id:{update.message.from_user.id}, name: {update.message.forward_sender_name}')
+    logger.info(f'new user start chat with the bot: user_id:{update.message.from_user.id}, name: {update.message.chat.first_name}')
+
+    # add the user to the db
+    User.get_or_create(chat_id=update.message.from_user.id, name=update.message.chat.first_name)
 
     await update.message.reply_text(text=START_MESSAGE)
 

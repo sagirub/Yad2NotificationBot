@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext
 # Bot constatns
 from constants import *
 
-from db import Search
+from connectors.db import User, Search
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -55,7 +55,8 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
 
     # add the new search to the db
     try:
-        Search.create(chat_id=update.message.from_user.id, search_name=search_name, search_url=search_link)
+        current_user = User.get(User.chat_id == update.message.from_user.id)
+        Search.create(User_id=current_user, search_name=search_name, search_url=search_link)
 
         logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
                     user_name: {update.message.forward_sender_name}, \

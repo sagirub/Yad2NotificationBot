@@ -9,14 +9,14 @@ from telegram.ext import CallbackContext
 # Bot constatns
 from constants import *
 
-from db import Search
+from connectors.db import User, Search
 
 # Init logger
 logger = logging.getLogger(__name__)
 
 
 async def delete_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
-    """TODO"""
+    """delete a search when there is a command start with /ds (delete search) by the search id"""
 
     message = DELETE_SEARCH_SUCCESS_END_MESSAGE
 
@@ -24,7 +24,8 @@ async def delete_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -
     search_id = update.message.text.replace("/ds_", "")
 
     # delete the search from db
-    if Search.select().where(Search.id == search_id and Search.chat_id == update.message.from_user.id):
+    current_user = User.get(update.message.from_user.id)
+    if current_user.searches.where(Search.id == search_id).exists():
         Search.delete_by_id(search_id)
 
         logger.info(f'search was successfully removed: user_id:{update.message.from_user.id}, \

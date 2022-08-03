@@ -19,7 +19,7 @@ from error_handler import error_handler
 
 from constants import *
 
-from db import create_tables
+from connectors.db import create_tables
 
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def main() -> None:
     load_conversation_handler(application)
     application.add_error_handler(error_handler)
 
-    logger.info('create db tabels')
+    logger.info('create db tables')
     create_tables()
 
     logger.info('start pulling bot')
