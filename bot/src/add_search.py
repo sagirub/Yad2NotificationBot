@@ -10,9 +10,10 @@ from telegram.ext import CallbackContext
 # Bot constatns
 from constants import *
 
+from db import Search
+
 # Init logger
 logger = logging.getLogger(__name__)
-
 
 async def add_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     """Send a message when the command /search is issued or the user type the add search buttom in menu."""
@@ -50,11 +51,20 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
     search_name = update.message.text
     search_link = context.user_data['search_link']
 
-    # TODO -call db service, and add new search item with search name and seach link
-    print(f'newsearch, name = {search_name} \nurl={search_link}\n')
-    logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
-         user_name: {update.message.forward_sender_name}, \
-             search_name: {search_name}, search_link: {search_link}')
+    message = ADD_SEARCH_SUCCESS_END_MESSAGE
+
+    # add the new search to the db
+    try:
+        Search.create(chat_id=update.message.from_user.id, search_name=search_name, search_url=search_link)
+
+        logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
+                    user_name: {update.message.forward_sender_name}, \
+                    search_name: {search_name}, search_link: {search_link}')
+    except Exception as error:
+        message = ADD_SEARCH_FAIL_END_MESSAGE
+        logger.error(f'filed to add a new search. user_id:{update.message.from_user.id}, \
+                            user_name: {update.message.forward_sender_name}, \
+                            search_name: {search_name}, search_link: {search_link}')
 
 
     # delete user search link from context
@@ -68,6 +78,6 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    await update.message.reply_text(text=ADD_SEARCH_END_MESSAGE, reply_markup=keyboard)
+    await update.message.reply_text(text=message, reply_markup=keyboard)
 
     return MENU
