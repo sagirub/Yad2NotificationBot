@@ -11,18 +11,22 @@ from telegram.ext import (
     filters,
 )
 
-from constants import *
 from start_menu import start, menu
 from add_search import add_search, add_search_link, add_search_name
 from search_list import search_list
 from delete_search import delete_search
 from error_handler import error_handler
 
+from constants import *
+
+from connectors.db import create_tables
+
+
 logger = logging.getLogger(__name__)
 
+
 # TODO: constatns to set as docker env variables
-TOKEN = "TOKEN"
-NAME = "NAME"
+TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
 LOG_FILE_PATH = 'bot.log'
 
 def load_conversation_handler(application: Application) -> None:
@@ -60,6 +64,9 @@ def main() -> None:
     application = Application.builder().token(TOKEN).build()
     load_conversation_handler(application)
     application.add_error_handler(error_handler)
+
+    logger.info('create db tables')
+    create_tables()
 
     logger.info('start pulling bot')
     application.run_polling()
