@@ -32,15 +32,14 @@ async def add_search_link(update: Update, context: CallbackContext.DEFAULT_TYPE)
 
     # validate its valid yad2 search url
     parsed_url = parse.urlparse(search_link)
-    
+
+    # TODO: MAYBE NEED A DEEP CHECK HERE? BROWSE THE LINK AND VALIDATE THAT IS A REAL SEARCH?
     if (parsed_url.netloc != YAD2_VALID_NETLOC):
         await update.message.reply_text(text=ADD_SEARCH_LINK_ERROR_MESSAGE)
 
         return ADD_SEARCH_LINK
 
-    # TODO: MAYBE NEED A DEEP CHECK HERE? BROWSE THE LINK AND VALIDATE THAT IS A REAL SEARCH? 
-
-    context.user_data['search_link'] = search_link
+    context.user_data['search_link'] = f'{parsed_url.path}?{parsed_url.query}'
     
     await update.message.reply_text(text=ADD_SEARCH_LINK_MESSAGE)
 
