@@ -8,6 +8,7 @@ from telegram.ext import (
     MessageHandler,
     ConversationHandler,
     CallbackQueryHandler,
+    PicklePersistence,
     filters,
 )
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # TODO: constatns to set as docker env variables
 TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
+PERSISTENCE_FILE_PATH = 'bot_persistence_pickle_data'
 LOG_FILE_PATH = 'bot.log'
 
 def load_conversation_handler(application: Application) -> None:
@@ -47,7 +49,9 @@ def load_conversation_handler(application: Application) -> None:
             DELETE_SEARCH: [MessageHandler(filters.Regex(DELETE_SEARCH_REGEX_PATTERN), delete_search)],
             MENU: [CallbackQueryHandler(menu, pattern='^' + str(MENU) + '$')],
         },
-        fallbacks= [CallbackQueryHandler(menu)],
+        fallbacks=[CallbackQueryHandler(menu)],
+        name='my_conversation',
+        persistent=True,
     )
 
     application.add_handler(conv_handler)
@@ -61,7 +65,8 @@ def main() -> None:
                         level=logging.INFO)
 
     logger.info('build telegram bot application')
-    application = Application.builder().token(TOKEN).build()
+    persistence = PicklePersistence(filepath=PERSISTENCE_FILE_PATH)
+    application = Application.builder().token(TOKEN).persistence(persistence).build()
     load_conversation_handler(application)
     application.add_error_handler(error_handler)
 
