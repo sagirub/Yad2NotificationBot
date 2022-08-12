@@ -7,7 +7,7 @@ from yad2utils import *
 logger = logging.getLogger(__name__)
 
 
-def get_search_item_ids(search_parameters, only_first_page=False) -> list:
+def get_search_item_ids(search_parameters: str, only_first_page: bool = False) -> list:
     '''
     TODO
     '''
@@ -17,7 +17,7 @@ def get_search_item_ids(search_parameters, only_first_page=False) -> list:
     search_api_url = SEARCH_API_BASE_URL + search_parameters
 
     try:
-
+        # TODO: combine more headers, use external library?
         response = requests.get(
             search_api_url,
             headers={'Accept': 'application/json'},
@@ -27,7 +27,6 @@ def get_search_item_ids(search_parameters, only_first_page=False) -> list:
         logger.error(f'the was an error while requesting the search base api\n{e}')
 
     # TODO: validate the response (status code, is json, not captcha, etc...) handle exceptions
-    #validate_search_api_response()
 
     json_response = response.json()
     item_ids = [item['link_token'] for item in json_response['data']['feed']['feed_items'] if 'link_token' in item]
@@ -36,7 +35,7 @@ def get_search_item_ids(search_parameters, only_first_page=False) -> list:
     # get the item ids of the next pages
     # if the only_first_page is False then the this for loop will not execute
     for page_id in range(2, total_pages + 1):
-        # TODO: combine more headers, use external library?
+        # TODO: combine more headers,  use external library?
         logger.info(f'request page {page_id}')
         try:
             response = requests.get(
@@ -53,6 +52,3 @@ def get_search_item_ids(search_parameters, only_first_page=False) -> list:
     logger.info(f'successfully get search items, {len(item_ids)} items retrieved')
 
     return item_ids
-
-
-#a = get_search_item_ids('vehicles/cars?manufacturer=12,38,51,300&price=1000-30000&km=20000--1&engineType=2,3&gearBox=0',False)
