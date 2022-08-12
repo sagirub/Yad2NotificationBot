@@ -2,9 +2,11 @@ import logging
 
 from connectors.db import Search, Item
 
+from yad2.yad2wrapper import get_search_item_ids
+
 logger = logging.getLogger(__name__)
 
-#TODO:
+#TODO: parameter or env
 BOT_TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
 LOG_FILE_PATH = 'scanner-job.log'
 
@@ -19,14 +21,12 @@ def main() -> None:
 
     # get all searches from the db
     for search in Search.select():
-        # TODO call external service that get all items ids from yad2 by the service url
-        # TODO in the first time if the items list empty, get all items, otherwise - get only the list page
-
         # we want only the last page items to avoid unnecessary calls to yad2 api
         there_are_exists_items = search.items.exists()
         current_item_ids_from_db = [item.item_id for item in search.items]
         # get updated current item ids from yad2
-        updated_item_ids = [] # TODO: yad2service.get_search_item_ids(get_only_last_page_items = there_are_exists_items)
+        updated_item_ids = get_search_item_ids(search_parameters=search.search_url,
+                                               only_first_page= there_are_exists_items)
 
         # extract only the new items that exists in the new retrieved item ids
         # and not exists in the search's item ids in the db
@@ -37,10 +37,10 @@ def main() -> None:
             Item.create(item_id=new_item_id, search_id=search.id)
 
             # get the item details
-            message = 'details about the item..maybe pictures'
+            message = f':נצפתה מודעה חדשה בחיפוש{search.search_name}'
 
             # notify the user about the new item with the details
-            send_telegram_bot_message_with_link(message, search.search_url, 'למודעה')
+            send_telegram_bot_message_with_link(message, f'https://www.yad2.co.il/item/{new_item_id}', 'למודעה')
 
 
 def send_telegram_bot_message_with_link(message, link, link_text):
@@ -53,6 +53,7 @@ def send_telegram_bot_message_with_link(message, link, link_text):
         "https://api.telegram.org/{}/sendMessage".format(BOT_TOKEN),
         params=params
     )
+
 
 if __name__ == "__main__":
     main()
