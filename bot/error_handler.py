@@ -10,8 +10,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
 
-# Bot constatns
-from constants import DEVELOPER_CHAT_ID
+from bot.constants import DEVELOPER_CHAT_ID
 
 # Init logger
 logger = logging.getLogger(__name__)
