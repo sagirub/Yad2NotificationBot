@@ -38,7 +38,6 @@ async def delete_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -
                     user_name: {update.message.forward_sender_name}, \
                     search_id: {search_id}')
 
-
     buttons = [
         [
             InlineKeyboardButton(MENU_BUTTON_TEXT, callback_data=str(MENU))

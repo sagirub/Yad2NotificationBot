@@ -11,7 +11,7 @@ from bot.constants import *
 
 from connectors.db import Search
 
-#Init logger
+# Init logger
 logger = logging.getLogger(__name__)
 
 
@@ -41,7 +41,6 @@ async def search_list(update: Update, context: CallbackContext.DEFAULT_TYPE) -> 
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    #await update.callback_query.answer()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=message,
