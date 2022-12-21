@@ -7,10 +7,10 @@ from urllib import parse
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import CallbackContext
 
-# Bot constatns
-from constants import *
+# Bot constants
+from bot.constants import *
 
-from connectors.db import User, Search
+from connectors.db import Search
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -54,11 +54,14 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
 
     # add the new search to the db
     try:
-        current_user = User.get(User.chat_id == update.message.from_user.id)
-        Search.create(User_id=current_user, search_name=search_name, search_url=search_link)
+        new_search = Search(
+            url=search_link,
+            chat_id=update.message.from_user.id,
+            name=search_name)
+        new_search.save()
 
         logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
-                    user_name: {update.message.forward_sender_name}, \
+                    user_name: {update.message.chat.first_name}, \
                     search_name: {search_name}, search_link: {search_link}')
     except Exception as error:
         message = ADD_SEARCH_FAIL_END_MESSAGE

@@ -1,37 +1,39 @@
+import os
 import logging
 
-from peewee import SqliteDatabase
-from peewee import Model, BigIntegerField, CharField, ForeignKeyField
+from pynamodb.models import Model
+from pynamodb.attributes import UnicodeAttribute, ListAttribute, NumberAttribute
+from base64 import b64encode
+from hashlib import md5
 
 logger = logging.getLogger(__name__)
 
-# TODO: ADD TO ENV FILES
-DATABASE_PATH = 'my_database.db'
 
-db = SqliteDatabase(DATABASE_PATH)
-
-
-class BaseModel(Model):
+class Search(Model):
     class Meta:
-        database = db
+        table_name = "searches"
+
+        if not os.getenv('PROD', False):
+            # for running local fake dynamo db (using DynamoDB Local or dynalite)
+            host = "http://localhost:8000"
+
+    id = UnicodeAttribute(hash_key=True)
+    url = UnicodeAttribute()
+    chat_id = NumberAttribute()
+    name = UnicodeAttribute()
+    item_ids = ListAttribute(default=[])
+
+    def save(self, **kwargs):
+        """
+        Generates the shortened code before saving
+        """
+        self.id = b64encode(
+            md5(self.url.encode('utf-8')).hexdigest()[-4:].encode('utf-8')
+        ).decode('utf-8').replace('=', '').replace('/', '_')
+        super(Search, self).save(**kwargs)
 
 
-class User(BaseModel):
-    chat_id = BigIntegerField(primary_key=True)
-    name = CharField()
-
-
-class Search(BaseModel):
-    User = ForeignKeyField(User, backref='searches')
-    search_name = CharField()
-    search_url = CharField()
-
-
-class Item(BaseModel):
-    item_id = CharField(primary_key=True)
-    search = ForeignKeyField(Search, backref='items')
-
-
-def create_tables() -> None:
-    with db:
-        db.create_tables([User, Search, Item])
+def create_table():
+    """ creates the search table in dynamodb if there aren't exists"""
+    if not Search.exists():
+        Search.create_table(wait=True, read_capacity_units=10, write_capacity_units=10)
