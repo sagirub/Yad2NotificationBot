@@ -6,25 +6,22 @@ import logging
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import CallbackContext
 
-# Bot constatns
-from constants import *
-
-from connectors.db import User
+# Bot constants
+from bot.constants import *
 
 # Init logger
 logger = logging.getLogger(__name__)
+
 
 async def start(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     """Send a message when the command /start is issued."""
     
     logger.info(f'new user start chat with the bot: user_id:{update.message.from_user.id}, name: {update.message.chat.first_name}')
 
-    # add the user to the db
-    User.get_or_create(chat_id=update.message.from_user.id, name=update.message.chat.first_name)
-
     await update.message.reply_text(text=START_MESSAGE)
 
     return await menu(update, context)
+
 
 async def menu(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     """serve the menu to the user"""
@@ -38,11 +35,10 @@ async def menu(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    #await update.callback_query.answer()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=MENU_INITIAL_TEXT,
-        reply_markup = keyboard
+        reply_markup=keyboard
     )
 
     return SELECTING_ACTION

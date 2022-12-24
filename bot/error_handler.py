@@ -5,21 +5,19 @@ import json
 import logging
 import traceback
 
-# Telegram API framework core imports
 from telegram import Update
 from telegram.ext import CallbackContext
 from telegram.constants import ParseMode
 
-# Bot constatns
-from constants import DEVELOPER_CHAT_ID
+from bot.constants import DEVELOPER_CHAT_ID
 
 # Init logger
 logger = logging.getLogger(__name__)
 
 
-
 async def error_handler(update: object, context: CallbackContext.DEFAULT_TYPE) -> None:
     """Log the error and send a telegram message to notify the developer."""
+
     # Log the error before we do anything else, so we can see it even if something breaks.
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
