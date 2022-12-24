@@ -1,6 +1,8 @@
 # coding: utf-8
 
 import logging
+import asyncio
+import json
 
 from telegram.ext import (
     Application,
@@ -11,29 +13,38 @@ from telegram.ext import (
     PicklePersistence,
     filters,
 )
+from telegram import Update
 
-from start_menu import start, menu
-from add_search import add_search, add_search_link, add_search_name
-from search_list import search_list
-from delete_search import delete_search
-from error_handler import error_handler
+from bot.start_menu import start, menu
+from bot.add_search import add_search, add_search_link, add_search_name
+from bot.search_list import search_list
+from bot.delete_search import delete_search
+from bot.error_handler import error_handler
 
-from constants import *
+from bot.constants import *
 
-from connectors.db import create_tables
-
+from connectors.db import create_table
 
 logger = logging.getLogger(__name__)
 
+# TODO: implement basepersistence class with dynamodb
+# TODO: update in build and load_conversation_handler
+#PERSISTENCE_FILE_PATH = 'bot_persistence_pickle_data'
+#persistence = PicklePersistence(filepath=PERSISTENCE_FILE_PATH)
 
-# TODO: constatns to set as docker env variables
-TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
-PERSISTENCE_FILE_PATH = 'bot_persistence_pickle_data'
-LOG_FILE_PATH = 'bot.log'
+# initialize logger
+logging.getLogger().setLevel(logging.INFO)
+
+logging.info(f'starting bot in {"production" if PROD else "dev"} mode')
+application = Application.builder().token(PROD_TELEGRAM_BOT_TOKEN if PROD else DEV_TELEGRAM_BOT_TOKEN).build()#.persistence(persistence).build()
+
+create_table()
+
 
 def load_conversation_handler(application: Application) -> None:
-    """Load conversation handler from files in a 'bot' directory"""
+    """Load all conversation handlers"""
 
+    logging.info('loading conversation handler')
     selection_handlers = [
         CallbackQueryHandler(add_search, pattern='^' + str(ADD_SEARCH) + '$'),
         CallbackQueryHandler(search_list, pattern='^' + str(SEARCH_LIST) + '$'),
@@ -51,32 +62,52 @@ def load_conversation_handler(application: Application) -> None:
         },
         fallbacks=[CallbackQueryHandler(menu)],
         name='my_conversation',
-        persistent=True,
+        #persistent=True,
     )
-
     application.add_handler(conv_handler)
-
-def main() -> None:
-    """Run the bot."""
-
-    # initalize the logger
-    logging.basicConfig(filename=LOG_FILE_PATH,
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        level=logging.INFO)
-
-    logger.info('build telegram bot application')
-    persistence = PicklePersistence(filepath=PERSISTENCE_FILE_PATH)
-    application = Application.builder().token(TOKEN).persistence(persistence).build()
-    load_conversation_handler(application)
     application.add_error_handler(error_handler)
 
-    logger.info('create db tables')
-    create_tables()
 
-    logger.info('start pulling bot')
-    application.run_polling()
-    logger.info('bot is active and wait for requests')
+def debug_main() -> None:
+    """ debug main - run the bot using polling """
+
+    try:
+        load_conversation_handler(application)
+        logger.info('start polling...')
+        application.run_polling()
+    except Exception as error:
+        logger.error(error)
+
+
+async def main(event, context) -> None:
+    """prod main - Run the bot using webhook with lambda"""
+
+    load_conversation_handler(application)
+
+    try:
+        await application.initialize()
+        await application.process_update(
+            Update.de_json(json.loads(event["body"]), application.bot)
+        )
+
+        return {
+            'statusCode': 200,
+            'body': 'Success'
+        }
+
+    except Exception as error:
+        logger.error(error)
+
+        return {
+            'statusCode': 500,
+            'body': 'Failure'
+        }
+
+
+def lambda_handler(event, context):
+    return asyncio.get_event_loop().run_until_complete(main(event, context))
 
 
 if __name__ == "__main__":
-    main()
+    if not PROD:
+        debug_main()

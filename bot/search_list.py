@@ -6,12 +6,12 @@ import logging
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import CallbackContext
 
-# Bot constatns
-from constants import *
+# Bot constants
+from bot.constants import *
 
-from connectors.db import User
+from connectors.db import Search
 
-#Init logger
+# Init logger
 logger = logging.getLogger(__name__)
 
 
@@ -19,15 +19,15 @@ async def search_list(update: Update, context: CallbackContext.DEFAULT_TYPE) -> 
     """Send a message when the command /searchlist is issued."""
 
     # get all user's searches from the db
-    user_searches_query = User.get(User.chat_id).searches
-    
+    user_searches_query = [search for search in Search.scan(Search.chat_id == update.effective_chat.id)]
+
     message = SEARCH_LIST_TEXT
-    if not user_searches_query.exists():
+    if not user_searches_query:
         message = EMPTY_SEARCH_LIST_TEXT
     else:
         for user_search in user_searches_query:
             message += (
-                f'{user_search.search_name}\n'
+                f'{user_search.name}\n'
                 'לחץ למחיקת החיפוש: '
                 f'/ds\_{str(user_search.id)}'
                 '\n'
@@ -41,7 +41,6 @@ async def search_list(update: Update, context: CallbackContext.DEFAULT_TYPE) -> 
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    #await update.callback_query.answer()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=message,

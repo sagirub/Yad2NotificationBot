@@ -1,21 +1,31 @@
 # encoding: utf-8
 
+import os
 from telegram.ext import ConversationHandler
+
+# Environment variables
+PROD = os.getenv('PROD', False) == 'True'
+# the prod bot using webhook, the dev bot using pooling
+if PROD:
+    PROD_TELEGRAM_BOT_TOKEN = os.environ['BOT_TOKEN']
+else:
+    DEV_TELEGRAM_BOT_TOKEN = os.environ['DEV_BOT_TOKEN']
+
 
 START, MENU, SELECTING_ACTION, ADD_SEARCH, ADD_SEARCH_LINK, ADD_SEARCH_NAME, DELETE_SEARCH, SEARCH_LIST = range(8)
 
 # Shortcut for ConversationHandler.END
 END = ConversationHandler.END
 
-#TODO: CREATE GROUP ONLY WITH ME
-DEVELOPER_CHAT_ID = 123456789
+# TODO: WHATS IS THIS??
+DEVELOPER_CHAT_ID = 12345678
 
 # Messages text
 
 START_MESSAGE = (
         'ברוכים הבאים לבוט התראות ל-יד2.'
         '\n\n'
-        'אני יעזור לך לעקוב אחרי חיפושים ביד2 ולקבל התראות על מודעות חדשות'
+        'אני אעזור לך לעקוב אחרי חיפושים ביד2 ולקבל התראות על מודעות חדשות'
         '\n\n'
         'זה מה שאני מסוגל לעשות:'
         '\n\n'
@@ -27,19 +37,19 @@ START_MESSAGE = (
 ADD_SEARCH_MESSAGE = (
         'העתק לכאן את שורת הכתובת של החיפוש, לדוגמא:'
         '\n\n'
-        'https://www.yad2.co.il/vehicles/private-cars?price=5000-30000'
+        'https://www.yad2.co.il/vehicles/cars?year=2015--1&price=5000-30000&km=10000-200000&gearBox=0'
 )
 
 ADD_SEARCH_LINK_MESSAGE = (
         'מעולה! עכשיו תן שם לחיפוש שלך, לדוגמא:'
         '\n\n'
-        'טורבו דיזל ידנית עד 100,000 קמ'
+        'כל הרכבים הידניים מעל שנת 2015 עד 30,000 שקל'
 )
 
 ADD_SEARCH_LINK_ERROR_MESSAGE = (
         'נראה שהלינק שהזנת לא תקין, נסה שוב, לינק לדוגמא:'
         '\n\n'
-        'https://www.yad2.co.il/vehicles/private-cars?price=5000-30000'
+        'https://www.yad2.co.il/vehicles/cars?price=5000-30000'
 )
 
 ADD_SEARCH_SUCCESS_END_MESSAGE = (
@@ -86,7 +96,7 @@ MENU_ADD_SEARCH_BUTTON_TEXT = 'הוספת חיפוש חדש 🔎'
 
 MENU_SEARCH_LIST_BUTTON_TEXT = 'רשימת החיפושים שלי 📃'
 
-# Yad2 url constans
+# Yad2 url constants
 YAD2_VALID_NETLOC = 'www.yad2.co.il'
 
 

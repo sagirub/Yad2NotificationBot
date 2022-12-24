@@ -1,59 +1,95 @@
+import os
 import logging
+import requests
 
-from connectors.db import Search, Item
+from connectors.db import Search
 
 from yad2.yad2wrapper import get_search_item_ids
 
+# initialize logger
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-#TODO: parameter or env
-BOT_TOKEN = "1511431534:AAF81Ctf0tHiVkDeZDJuGaiI6h-XF3fAQLo"
-LOG_FILE_PATH = 'scanner-job.log'
+BOT_TOKEN = os.environ['BOT_TOKEN']
 
 
-def main() -> None:
+def send_telegram_bot_message(bot_token, chat_id, message) -> None:
+    """ send a regular message from a bot to user by his chat id """
+
+    params = {
+        "chat_id": chat_id,
+        "text": message
+    }
+    requests.get(
+        f'https://api.telegram.org/bot{bot_token}/sendMessage',
+        params=params
+    )
+
+
+def send_telegram_bot_message_with_link(bot_token, chat_id, link, link_text) -> None:
+    """ send a markdown message (can contains link as text) from a bot to user by his chat id """
+
+    params = {
+        "chat_id": chat_id,
+        "text": f'[{link_text}]({link})',
+        "parse_mode": "markdown",
+    }
+    requests.get(
+        f'https://api.telegram.org/bot{bot_token}/sendMessage',
+        params=params
+    )
+
+
+def scan_new_items() -> None:
     """Start the scanning job."""
 
-    # initialize logger
-    logging.basicConfig(filename=LOG_FILE_PATH,
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        level=logging.INFO)
+    logger.info('starting scan new items job')
 
-    # get all searches from the db
-    for search in Search.select():
-        # we want only the last page items to avoid unnecessary calls to yad2 api
-        there_are_exists_items = search.items.exists()
-        current_item_ids_from_db = [item.item_id for item in search.items]
-        # get updated current item ids from yad2
-        updated_item_ids = get_search_item_ids(search_parameters=search.search_url,
-                                               only_first_page= there_are_exists_items)
+    for search in Search.scan():
+
+        # get the current item ids of the search from previous scans
+        current_item_ids_from_db = search.item_ids
+
+        # get updated item ids from yad2
+        # we want to avoid unnecessary calls to yad2 api (in order to not be blocked)
+        # so if its the first scan for this search (item ids list in the db is empty) we need to scan all pages
+        # else we can scan only the first page
+        logger.info(f'request updated items of search id: {search.id}, name: {search.name}')
+
+        # TODO: change only first page to be by last scan date
+        updated_item_ids = get_search_item_ids(search_parameters=search.url,
+                                               only_first_page=False if not current_item_ids_from_db else True)
+
+        logger.info(
+            f'successfully get {len(updated_item_ids)} updated_item_ids for for search: {search.id}, {search.name}')
 
         # extract only the new items that exists in the new retrieved item ids
         # and not exists in the search's item ids in the db
         new_updated_item_ids = list(set(updated_item_ids).difference(current_item_ids_from_db))
 
-        for new_item_id in new_updated_item_ids:
-            # update the new item id to search items in the db
-            Item.create(item_id=new_item_id, search_id=search.id)
+        if new_updated_item_ids and current_item_ids_from_db:
+            logger.info(f'notify the user about new {len(new_updated_item_ids)} items')
+            send_telegram_bot_message(BOT_TOKEN, search.chat_id, f'נצפו מודעות חדשות בחיפוש: {search.name}')
 
-            # get the item details
-            message = f':נצפתה מודעה חדשה בחיפוש{search.search_name}'
+            for new_item_id in new_updated_item_ids:
+                send_telegram_bot_message_with_link(BOT_TOKEN,
+                                                    search.chat_id, f'https://www.yad2.co.il/item/{new_item_id}',
+                                                    'לפתיחת המודעה')
 
-            # notify the user about the new item with the details
-            send_telegram_bot_message_with_link(message, f'https://www.yad2.co.il/item/{new_item_id}', 'למודעה')
-
-
-def send_telegram_bot_message_with_link(message, link, link_text):
-    params = {
-        "chat_id": BOT_CHAT_ID,
-        "text": f'{message}\n[{link_text}]({link})',
-        "parse_mode": "markdown",
-    }
-    requests.get(
-        "https://api.telegram.org/{}/sendMessage".format(BOT_TOKEN),
-        params=params
-    )
+        logger.info(f'update all new item ids in the db as item the user already notified')
+        search.update(actions=[Search.item_ids.set(
+            Search.item_ids.append(new_updated_item_ids)
+        )])
 
 
-if __name__ == "__main__":
-    main()
+def lambda_handler(event, context):
+    try:
+        scan_new_items()
+    except Exception as error:
+        logger.error(error)
+
+# if __name__ == "__main__":
+#     try:
+#         scan_new_items()
+#     except Exception as error:
+#         logger.error(error)
