@@ -2,6 +2,7 @@
 
 import logging
 from urllib import parse
+from datetime import datetime
 
 # Telegram API framework core imports
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
@@ -9,8 +10,10 @@ from telegram.ext import CallbackContext
 
 # Bot constants
 from bot.constants import *
-
 from connectors.db import Search
+
+#TODO: FIX IMPORT
+YAD2_DATETIME_STRING_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -60,7 +63,8 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
         new_search = Search(
             url=search_link,
             chat_id=update.message.from_user.id,
-            name=search_name)
+            name=search_name,
+            last_scan_time=str(datetime.now().strftime(YAD2_DATETIME_STRING_FORMAT)))
         new_search.save()
 
         logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \

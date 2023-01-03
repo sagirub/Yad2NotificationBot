@@ -2,7 +2,7 @@ import os
 import logging
 
 from pynamodb.models import Model
-from pynamodb.attributes import UnicodeAttribute, ListAttribute, NumberAttribute
+from pynamodb.attributes import UnicodeAttribute, NumberAttribute
 from base64 import b64encode
 from hashlib import md5
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class Search(Model):
     class Meta:
-        table_name = "searches"
+        table_name = "searches_prod"
 
         if not os.getenv('PROD', False):
             # for running local fake dynamo db (using DynamoDB Local or dynalite)
@@ -21,7 +21,7 @@ class Search(Model):
     url = UnicodeAttribute()
     chat_id = NumberAttribute()
     name = UnicodeAttribute()
-    item_ids = ListAttribute(default=[])
+    last_scan_time = UnicodeAttribute()
 
     def save(self, **kwargs):
         """
