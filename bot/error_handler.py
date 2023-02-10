@@ -6,7 +6,7 @@ import logging
 import traceback
 
 from telegram import Update
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 from bot.constants import DEVELOPER_CHAT_ID
@@ -15,7 +15,7 @@ from bot.constants import DEVELOPER_CHAT_ID
 logger = logging.getLogger(__name__)
 
 
-async def error_handler(update: object, context: CallbackContext.DEFAULT_TYPE) -> None:
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and send a telegram message to notify the developer."""
 
     # Log the error before we do anything else, so we can see it even if something breaks.

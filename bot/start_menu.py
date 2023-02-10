@@ -4,7 +4,7 @@ import logging
 
 # Telegram API framework core imports
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 
 # Bot constants
 from bot.constants import *
@@ -13,7 +13,7 @@ from bot.constants import *
 logger = logging.getLogger(__name__)
 
 
-async def start(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Send a message when the command /start is issued."""
     
     logger.info(f'new user start chat with the bot: user_id:{update.message.from_user.id}, name: {update.message.chat.first_name}')
@@ -23,7 +23,7 @@ async def start(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
     return await menu(update, context)
 
 
-async def menu(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """serve the menu to the user"""
 
     buttons = [
@@ -41,4 +41,9 @@ async def menu(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
         reply_markup=keyboard
     )
 
-    return SELECTING_ACTION
+    return MENU_SELECTING_ACTION
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """ Cancel current conversation """
+    return END
