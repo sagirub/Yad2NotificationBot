@@ -4,7 +4,7 @@ import logging
 
 # Telegram API framework core imports
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 
 # Bot constants
 from bot.constants import *
@@ -15,7 +15,7 @@ from connectors.db import Search
 logger = logging.getLogger(__name__)
 
 
-async def delete_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def delete_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """delete a search when there is a command start with /ds (delete search) by the search id"""
 
     message = DELETE_SEARCH_SUCCESS_END_MESSAGE

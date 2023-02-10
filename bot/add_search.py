@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Telegram API framework core imports
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 
 # Bot constants
 from bot.constants import *
@@ -19,19 +19,15 @@ YAD2_DATETIME_STRING_FORMAT = '%Y-%m-%d %H:%M:%S'
 logger = logging.getLogger(__name__)
 
 
-async def add_search(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def add_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Send a message when the command /search is issued or the user type the add search button in menu."""
 
-    await update.callback_query.answer()
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=ADD_SEARCH_MESSAGE
-    )
+    await update.effective_message.reply_text(ADD_SEARCH_MESSAGE)
 
     return ADD_SEARCH_LINK
 
 
-async def add_search_link(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def add_search_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the search link from the user after the command /search is issued"""
     search_link = update.message.text
 
@@ -51,7 +47,7 @@ async def add_search_link(update: Update, context: CallbackContext.DEFAULT_TYPE)
     return ADD_SEARCH_NAME
 
 
-async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE) -> int:
+async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the name of the search after getting the search link"""
     search_name = update.message.text
     search_link = context.user_data['search_link']
@@ -90,4 +86,4 @@ async def add_search_name(update: Update, context: CallbackContext.DEFAULT_TYPE)
 
     await update.message.reply_text(text=message, reply_markup=keyboard)
 
-    return MENU
+    return END
