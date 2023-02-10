@@ -6,16 +6,16 @@ import json
 
 from telegram.ext import (
     Application,
+    ApplicationBuilder,
     CommandHandler,
     MessageHandler,
     ConversationHandler,
     CallbackQueryHandler,
-    PicklePersistence,
-    filters,
+    filters
 )
 from telegram import Update
 
-from bot.start_menu import start, menu
+from bot.start_menu import start, cancel, menu
 from bot.add_search import add_search, add_search_link, add_search_name
 from bot.search_list import search_list
 from bot.delete_search import delete_search
@@ -27,44 +27,56 @@ from connectors.db import create_table
 
 logger = logging.getLogger(__name__)
 
-# TODO: implement basepersistence class with dynamodb
-# TODO: update in build and load_conversation_handler
-#PERSISTENCE_FILE_PATH = 'bot_persistence_pickle_data'
-#persistence = PicklePersistence(filepath=PERSISTENCE_FILE_PATH)
-
 # initialize logger
 logging.getLogger().setLevel(logging.INFO)
 
 logging.info(f'starting bot in {"production" if PROD else "dev"} mode')
-application = Application.builder().token(PROD_TELEGRAM_BOT_TOKEN if PROD else DEV_TELEGRAM_BOT_TOKEN).build()#.persistence(persistence).build()
+
+
+async def set_my_bot_commands(application: Application) -> None:
+    """Callback function to set bot commands after bot initialization"""
+    await application.bot.set_my_commands([
+        ('start', 'Start the bot'),
+        ('add_search', 'Add new search to track'),
+        ('list', 'Your tracking list')
+    ])
+
+
+application = (
+    ApplicationBuilder()
+    .token(PROD_TELEGRAM_BOT_TOKEN if PROD else DEV_TELEGRAM_BOT_TOKEN)
+    .post_init(set_my_bot_commands)
+    .build()
+)
 
 create_table()
 
 
-def load_conversation_handler(application: Application) -> None:
+def load_conversation_handlers(application: Application) -> None:
     """Load all conversation handlers"""
 
-    logging.info('loading conversation handler')
-    selection_handlers = [
-        CallbackQueryHandler(add_search, pattern='^' + str(ADD_SEARCH) + '$'),
-        CallbackQueryHandler(search_list, pattern='^' + str(SEARCH_LIST) + '$'),
-        CallbackQueryHandler(menu, pattern='^' + str(MENU) + '$'),
-    ]
+    logging.info('loading conversation handlers')
 
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+    # stateless commands
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('list', search_list))
+    application.add_handler(CallbackQueryHandler(search_list, pattern=f'^{str(SEARCH_LIST)}$'))
+    application.add_handler(CallbackQueryHandler(menu, pattern=f'^{str(MENU)}$'))
+    application.add_handler(MessageHandler(filters.Regex(DELETE_SEARCH_REGEX_PATTERN), delete_search))
+
+    # add new search conversation handler
+    add_search_conversation = ConversationHandler(
+        entry_points=[CommandHandler('add_search', add_search),
+                      CallbackQueryHandler(add_search, pattern=f'^{str(ADD_SEARCH)}$')],
         states={
-            SELECTING_ACTION: selection_handlers,
-            ADD_SEARCH_LINK: [MessageHandler(filters.TEXT, add_search_link,)],
-            ADD_SEARCH_NAME: [MessageHandler(filters.TEXT, add_search_name)],
-            DELETE_SEARCH: [MessageHandler(filters.Regex(DELETE_SEARCH_REGEX_PATTERN), delete_search)],
-            MENU: [CallbackQueryHandler(menu, pattern='^' + str(MENU) + '$')],
+            ADD_SEARCH_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_search_link)],
+            ADD_SEARCH_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_search_name)]
         },
-        fallbacks=[CallbackQueryHandler(menu)],
-        name='my_conversation',
-        #persistent=True,
+        fallbacks=[MessageHandler(filters.COMMAND, cancel)],
+        allow_reentry=True
     )
-    application.add_handler(conv_handler)
+
+    application.add_handler(add_search_conversation)
     application.add_error_handler(error_handler)
 
 
@@ -72,9 +84,10 @@ def debug_main() -> None:
     """ debug main - run the bot using polling """
 
     try:
-        load_conversation_handler(application)
+        load_conversation_handlers(application)
+
         logger.info('start polling...')
-        application.run_polling()
+        application.run_polling(drop_pending_updates=True)
     except Exception as error:
         logger.error(error)
 
@@ -82,7 +95,7 @@ def debug_main() -> None:
 async def main(event, context) -> None:
     """prod main - Run the bot using webhook with lambda"""
 
-    load_conversation_handler(application)
+    load_conversation_handlers(application)
 
     try:
         await application.initialize()
@@ -111,3 +124,4 @@ def lambda_handler(event, context):
 if __name__ == "__main__":
     if not PROD:
         debug_main()
+
