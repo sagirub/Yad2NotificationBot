@@ -28,7 +28,7 @@ def get_search_item_ids(search_parameters: str, max_pages: int = sys.maxsize,
         also help to avoid unnecessary request of old items
         because now can loop over pages until their update date is before
         the requested min added time
-        this datetime must be in israel timezone!
+        this datetime must be in Asia/Jerusalem timezone!
         default value is the minimum value of datetime
 
     Returns
@@ -76,8 +76,7 @@ def get_search_item_ids(search_parameters: str, max_pages: int = sys.maxsize,
         page_item_ids = [item['link_token']
                          for item in response_feed_items_json
                          if 'link_token' in item and
-                         datetime.strptime(item['date_added'], YAD2_DATETIME_STRING_FORMAT) >
-                         datetime.strptime(min_addition_date, YAD2_DATETIME_STRING_FORMAT)]
+                         datetime.strptime(item['date_added'], YAD2_DATETIME_STRING_FORMAT) > min_addition_date]
         search_item_ids.extend(page_item_ids)
 
         # Check minimum date limit
@@ -87,8 +86,7 @@ def get_search_item_ids(search_parameters: str, max_pages: int = sys.maxsize,
         # the second item from the end because the last item in the json is not really item from the search (yad2?!)
         last_item_in_page = response_feed_items_json[-2]
         if ('date' in last_item_in_page and
-                datetime.strptime(last_item_in_page['date'], YAD2_DATETIME_STRING_FORMAT) <
-                datetime.strptime(min_addition_date, YAD2_DATETIME_STRING_FORMAT)):
+                datetime.strptime(last_item_in_page['date'], YAD2_DATETIME_STRING_FORMAT) < min_addition_date):
             break
 
     logger.info(f'successfully get search items, {len(search_item_ids)} items retrieved')

@@ -55,22 +55,20 @@ def scan_new_items() -> None:
     for search in Search.scan():
 
         # convert last scan time to israel time zone because last scan time in my lambda is in utc timezone
-        last_scan_time_converted_to_israel_timezone = \
-            datetime.strptime(search.last_scan_time, YAD2_DATETIME_STRING_FORMAT). \
-                astimezone(tz=pytz.timezone('Asia/Jerusalem')).strftime(YAD2_DATETIME_STRING_FORMAT)
+        search_last_scan_time = datetime.fromisoformat(search.last_scan_time)
 
         # get the updated search item ids from yad2
         # filter only items that the user have not seen - that their adding time is after minimum add time
         logger.info(f'request updated items of search id: {search.id}, name: {search.name},'
                     f' last scan time: {search.last_scan_time}')
         updated_item_ids = get_search_item_ids(search_parameters=search.url,
-                                               min_addition_date=last_scan_time_converted_to_israel_timezone)
+                                               min_addition_date=search_last_scan_time)
 
         logger.info(
             f'successfully get {len(updated_item_ids)} updated_item_ids for for search: {search.id},'
             f' {search.name}, notify them to the user')
 
-        # if there are new item - notify them to the user
+        # if there are new items - notify them to the user
         if updated_item_ids:
             send_telegram_bot_message(BOT_TOKEN, search.chat_id, f'נצפו מודעות חדשות בחיפוש: {search.name}')
 
@@ -80,7 +78,7 @@ def scan_new_items() -> None:
                                                     'לחץ כאן לפתיחת למודעה')
 
         #  update last scan time in the db
-        search.update(actions=[Search.last_scan_time.set(str(datetime.now().strftime(YAD2_DATETIME_STRING_FORMAT)))])
+        search.update(actions=[Search.last_scan_time.set(str(datetime.now().isoformat()))])
 
 
 def lambda_handler(event, context):
