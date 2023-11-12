@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TelegramYad2NotificationBot-Template
+
+Parameters:
+  BotToken:
+    Type: String
+  TableName:
+    Type: String
+
+Resources:
+  TelegramYad2NotificationBotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: bot/main.lambda_handler
+      Runtime: python3.9
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref BotToken
+          DB_TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+
+  ItemsScannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: item-scanner-job/item-scanner-job.lambda_handler
+      Runtime: python3.9
+      Timeout: 300
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref BotToken
+          DB_TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+
+  ItemsScannerJobInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ItemsScannerFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ItemsScannerTriggerEventRule.Arn
+
+  ItemsScannerTriggerEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: scanNewItemsJobTrigger
+      # UTC time zone
+      ScheduleExpression: cron(0/20 7-20 ? * SUN-FRI *)
+      Targets:
+        - Arn: !GetAtt ItemsScannerFunction.Arn
+          Id: 'ItemsScannerTriggerEventRule'
+
+Outputs:
+  TelegramApi:
+    Description: 'Lambda Function URL to set in telegram webhook'
+    Value:
+      Fn::GetAtt: TelegramYad2NotificationBotFunctionUrl.FunctionUrl
+
+

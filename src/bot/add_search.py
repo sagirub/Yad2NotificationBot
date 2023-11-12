@@ -10,7 +10,8 @@ from telegram.ext import ContextTypes
 
 # Bot constants
 from bot.constants import *
-from connectors.db import Search
+
+from connectors.db.models import Search
 
 #TODO: FIX IMPORT
 YAD2_DATETIME_STRING_FORMAT = '%Y-%m-%d %H:%M:%S'

@@ -4,12 +4,9 @@ import os
 from telegram.ext import ConversationHandler
 
 # Environment variables
-PROD = os.getenv('PROD', False) == 'True'
+DEBUG = os.getenv('DEBUG', False) == 'True'
 # the prod bot using webhook, the dev bot using pooling
-if PROD:
-    PROD_TELEGRAM_BOT_TOKEN = os.environ['BOT_TOKEN']
-else:
-    DEV_TELEGRAM_BOT_TOKEN = os.environ['DEV_BOT_TOKEN']
+BOT_TOKEN = os.environ['BOT_TOKEN']
 
 
 START, MENU, MENU_SELECTING_ACTION, ADD_SEARCH, ADD_SEARCH_LINK, ADD_SEARCH_NAME, DELETE_SEARCH, SEARCH_LIST = range(8)
