@@ -13,9 +13,6 @@ from bot.constants import *
 
 from connectors.db.models import Search
 
-#TODO: FIX IMPORT
-YAD2_DATETIME_STRING_FORMAT = '%Y-%m-%d %H:%M:%S'
-
 # Init logger
 logger = logging.getLogger(__name__)
 
@@ -61,7 +58,7 @@ async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             url=search_link,
             chat_id=update.message.from_user.id,
             name=search_name,
-            last_scan_time=str(datetime.now().strftime(YAD2_DATETIME_STRING_FORMAT)))
+            last_scan_time=str(datetime.now().isoformat()))
         new_search.save()
 
         logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
