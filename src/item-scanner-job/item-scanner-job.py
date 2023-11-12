@@ -30,7 +30,7 @@ def send_telegram_bot_message(bot_token: str, chat_id: int, message: str) -> Non
 
 
 def send_telegram_bot_message_with_link(bot_token: str, chat_id: int, link: str, link_text: str) -> None:
-    """ send a markdown message (can contains link as text) from a bot to user by his chat id """
+    """ send a markdown message (can contain link as text) from a bot to user by his chat id """
 
     params = {
         "chat_id": chat_id,
