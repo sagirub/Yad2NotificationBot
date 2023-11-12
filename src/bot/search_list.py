@@ -9,7 +9,7 @@ from telegram.ext import ContextTypes
 # Bot constants
 from bot.constants import *
 
-from connectors.db import Search
+from connectors.db.models import Search
 
 # Init logger
 logger = logging.getLogger(__name__)
