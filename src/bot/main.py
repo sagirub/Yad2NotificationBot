@@ -20,17 +20,13 @@ from bot.add_search import add_search, add_search_link, add_search_name
 from bot.search_list import search_list
 from bot.delete_search import delete_search
 from bot.error_handler import error_handler
-
 from bot.constants import *
 
-from connectors.db import create_table
-
-logger = logging.getLogger(__name__)
 
 # initialize logger
+logger = logging.getLogger(__name__)
 logging.getLogger().setLevel(logging.INFO)
-
-logging.info(f'starting bot in {"production" if PROD else "dev"} mode')
+logging.info(f'starting bot in {"debug" if DEBUG else "prod"} mode')
 
 
 async def set_my_bot_commands(application: Application) -> None:
@@ -44,12 +40,10 @@ async def set_my_bot_commands(application: Application) -> None:
 
 application = (
     ApplicationBuilder()
-    .token(PROD_TELEGRAM_BOT_TOKEN if PROD else DEV_TELEGRAM_BOT_TOKEN)
+    .token(BOT_TOKEN)
     .post_init(set_my_bot_commands)
     .build()
 )
-
-create_table()
 
 
 def load_conversation_handlers(application: Application) -> None:
@@ -122,6 +116,5 @@ def lambda_handler(event, context):
 
 
 if __name__ == "__main__":
-    if not PROD:
+    if DEBUG:
         debug_main()
-
