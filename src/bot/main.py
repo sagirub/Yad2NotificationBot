@@ -79,7 +79,6 @@ def debug_main() -> None:
 
     try:
         load_conversation_handlers(application)
-
         logger.info('start polling...')
         application.run_polling(drop_pending_updates=True)
     except Exception as error:
