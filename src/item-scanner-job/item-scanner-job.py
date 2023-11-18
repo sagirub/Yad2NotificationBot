@@ -1,7 +1,6 @@
 import os
 import logging
 import requests
-import pytz
 from datetime import datetime
 
 from connectors.db import Search
@@ -50,7 +49,7 @@ def scan_new_items() -> None:
     notify the new items to the user.
     """
 
-    logger.info('starting scan new items job')
+    logger.info('starting scan items job')
 
     for search in Search.scan():
 
@@ -58,23 +57,25 @@ def scan_new_items() -> None:
         search_last_scan_time = datetime.fromisoformat(search.last_scan_time)
 
         # get the updated search item ids from yad2
-        # filter only items that the user have not seen - that their adding time is after minimum add time
-        logger.info(f'request updated items of search id: {search.id}, name: {search.name},'
-                    f' last scan time: {search.last_scan_time}')
-        updated_item_ids = get_search_item_ids(search_parameters=search.url,
-                                               min_addition_date=search_last_scan_time)
-
-        logger.info(
-            f'successfully get {len(updated_item_ids)} updated_item_ids for for search: {search.id},'
-            f' {search.name}, notify them to the user')
+        # filter only items that the user have not seen yet - that posted after the last scan time
+        # if there was a failure while getting the new ads, continue to the next search
+        try:
+            logger.info(f'request new ads of search id: {search.id}, name: {search.name}, '
+                        f'for only the ads posted after: {search.last_scan_time}')
+            new_item_ids = get_search_item_ids(search_parameters=search.url, min_addition_date=search_last_scan_time)
+        except Exception as exception:
+            logger.error(f"failed to get search: {search.id}, {search.name} new ads", exception)
+            continue
 
         # if there are new items - notify them to the user
-        if updated_item_ids:
+        if new_item_ids:
+            logger.info(f'{len(new_item_ids)} new ads seen for search id: {search.id},name: {search.name}')
+
             send_telegram_bot_message(BOT_TOKEN, search.chat_id, f'נצפו מודעות חדשות בחיפוש: {search.name}')
 
-            for new_item_id in updated_item_ids:
+            for item_id in new_item_ids:
                 send_telegram_bot_message_with_link(BOT_TOKEN,
-                                                    search.chat_id, f'{ITEM_API_BASE_URL}{new_item_id}',
+                                                    search.chat_id, f'{ITEM_API_BASE_URL}{item_id}',
                                                     'לחץ כאן לפתיחת למודעה')
 
         #  update last scan time in the db
