@@ -7,7 +7,7 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 
 # Bot constants
-from bot.constants import *
+from constants import *
 
 # Init logger
 logger = logging.getLogger(__name__)

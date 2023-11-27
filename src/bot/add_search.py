@@ -9,9 +9,9 @@ from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import ContextTypes
 
 # Bot constants
-from bot.constants import *
+from constants import *
 
-from connectors.db.models import Search
+from models import Search
 
 # Init logger
 logger = logging.getLogger(__name__)

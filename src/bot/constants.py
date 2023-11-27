@@ -96,6 +96,5 @@ MENU_SEARCH_LIST_BUTTON_TEXT = 'החיפושים שלי 📃'
 # Yad2 url constants
 YAD2_VALID_NETLOC = 'www.yad2.co.il'
 
-
 # Regex patterns
 DELETE_SEARCH_REGEX_PATTERN = 'ds_(.*)'
