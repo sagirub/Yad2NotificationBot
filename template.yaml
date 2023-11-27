@@ -12,12 +12,17 @@ Parameters:
     Type: String
     Default: Asia/Jerusalem
 
+Globals:
+  Function:
+    Layers:
+      - !Ref DBConnectorLayer
+
 Resources:
   TelegramYad2NotificationBotFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: bot/main.lambda_handler
+      CodeUri: src/bot/
+      Handler: main.lambda_handler
       Runtime: python3.9
       FunctionUrlConfig:
         AuthType: NONE
@@ -33,8 +38,8 @@ Resources:
   ItemsScannerFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: item-scanner-job/item-scanner-job.lambda_handler
+      CodeUri: src/item-scanner-job/
+      Handler: item-scanner-job.lambda_handler
       Runtime: python3.9
       Timeout: 300
       Environment:
@@ -42,6 +47,8 @@ Resources:
           BOT_TOKEN: !Ref BotToken
           DB_TABLE_NAME: !Ref TableName
           TZ: !Ref TimeZone
+      Layers:
+        - !Ref Yad2LibraryLayer
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TableName
@@ -53,6 +60,29 @@ Resources:
             ScheduleExpression: cron(0/20 7-22 ? * SUN-FRI *)
             ScheduleExpressionTimezone: Asia/Jerusalem
 
+  DBConnectorLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: db-connector-layer
+      ContentUri: src/connectors/db/
+      Description: lambda layer for connection to the db
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
+
+  Yad2LibraryLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: yad2-library-layer
+      ContentUri: src/yad2/
+      Description: lambda layer for yad2 library
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
 
 Outputs:
   TelegramApi:

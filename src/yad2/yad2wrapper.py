@@ -1,9 +1,9 @@
-import requests
-import logging
 import sys
+import logging
+import requests
 from datetime import datetime
 
-from yad2.yad2utils import *
+from yad2utils import *
 
 # Init logger
 logger = logging.getLogger(__name__)
