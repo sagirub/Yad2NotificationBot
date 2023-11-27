@@ -3,10 +3,10 @@ import logging
 import requests
 from datetime import datetime
 
-from connectors.db import Search
+from models import Search
 
-from yad2.yad2wrapper import get_search_item_ids
-from yad2.yad2utils import *
+from yad2wrapper import get_search_item_ids
+from yad2utils import *
 
 # initialize logger
 logger = logging.getLogger(__name__)

@@ -15,12 +15,12 @@ from telegram.ext import (
 )
 from telegram import Update
 
-from bot.start_menu import start, cancel, menu
-from bot.add_search import add_search, add_search_link, add_search_name
-from bot.search_list import search_list
-from bot.delete_search import delete_search
-from bot.error_handler import error_handler
-from bot.constants import *
+from start_menu import start, cancel, menu
+from add_search import add_search, add_search_link, add_search_name
+from search_list import search_list
+from delete_search import delete_search
+from error_handler import error_handler
+from constants import *
 
 
 # initialize logger
