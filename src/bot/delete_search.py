@@ -25,18 +25,18 @@ async def delete_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     # delete the search from db
     search_to_delete = Search.get(search_id)
-    if search_to_delete:
+    if search_to_delete and search_to_delete.chat_id == update.message.from_user.id:
         search_to_delete.delete()
 
         logger.info(f'search was successfully removed: user_id:{update.message.from_user.id}, \
-                  user_name: {update.message.forward_sender_name}, \
-                  search_id: {search_id}')
+                      user_name: {update.message.forward_sender_name}, \
+                      search_id: {search_id}')
     else:
         message = DELETE_SEARCH_FAIL_END_MESSAGE
         logger.error(f'search was not successfully removed, maybe the search id not exist or its other user search. \
-                     user_id:{update.message.from_user.id}, \
-                    user_name: {update.message.forward_sender_name}, \
-                    search_id: {search_id}')
+                       user_id:{update.message.from_user.id}, \
+                       user_name: {update.message.forward_sender_name}, \
+                       search_id: {search_id}')
 
     buttons = [
         [

@@ -16,6 +16,7 @@ Globals:
   Function:
     Layers:
       - !Ref DBConnectorLayer
+      - !Ref Yad2LibraryLayer
 
 Resources:
   TelegramYad2NotificationBotFunction:
@@ -24,6 +25,7 @@ Resources:
       CodeUri: src/bot/
       Handler: main.lambda_handler
       Runtime: python3.9
+      Timeout: 30
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -47,8 +49,6 @@ Resources:
           BOT_TOKEN: !Ref BotToken
           DB_TABLE_NAME: !Ref TableName
           TZ: !Ref TimeZone
-      Layers:
-        - !Ref Yad2LibraryLayer
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref TableName

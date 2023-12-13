@@ -1,7 +1,6 @@
 # encoding: utf-8
 
 import logging
-from urllib import parse
 from datetime import datetime
 
 # Telegram API framework core imports
@@ -11,7 +10,11 @@ from telegram.ext import ContextTypes
 # Bot constants
 from constants import *
 
+# DB search model
 from models import Search
+
+# Yad2 utils
+from yad2wrapper import validate_search_url
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -27,19 +30,25 @@ async def add_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def add_search_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the search link from the user after the command /search is issued"""
-    search_link = update.message.text
+    search_url = update.message.text
 
-    # validate its valid yad2 search url
-    parsed_url = parse.urlparse(search_link)
+    # send temporary message about url validation
+    await_message_while_validating_search_url = \
+        await update.message.reply_text(VALIDATING_SEARCH_LINK_AWAIT_MESSAGE)
 
-    # TODO: MAYBE NEED A DEEP CHECK HERE? BROWSE THE LINK AND VALIDATE THAT IS A REAL SEARCH?
-    if parsed_url.netloc != YAD2_VALID_NETLOC:
+    # validate the search link the user entered
+    logger.info(f'Validating the search url - {search_url} for the user {update.message.from_user.id}')
+    if not validate_search_url(search_url, access_check=True):
+        logger.error(f'Failed to validate the search url - {search_url} of user {update.message.from_user.id}')
         await update.message.reply_text(text=ADD_SEARCH_LINK_ERROR_MESSAGE)
-
+        # retry
         return ADD_SEARCH_LINK
 
-    context.user_data['search_link'] = f'{parsed_url.path}?{parsed_url.query}'
-    
+    # delete the temporary message about url validation
+    await await_message_while_validating_search_url.delete()
+
+    context.user_data['search_link'] = search_url
+
     await update.message.reply_text(text=ADD_SEARCH_LINK_MESSAGE)
 
     return ADD_SEARCH_NAME
@@ -64,12 +73,12 @@ async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
                     user_name: {update.message.chat.first_name}, \
                     search_name: {search_name}, search_link: {search_link}')
-    except Exception as error:
+    except Exception as e:
         message = ADD_SEARCH_FAIL_END_MESSAGE
         logger.error(f'failed to add a new search. user_id:{update.message.from_user.id}, \
-                            user_name: {update.message.forward_sender_name}, \
+                            user_name: {update.message.chat.first_name}, \
                             search_name: {search_name}, search_link: {search_link}')
-        logger.error(error)
+        logger.error(e, exc_info=True)
 
     # delete user search link from context
     del context.user_data['search_link']
