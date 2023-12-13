@@ -6,9 +6,8 @@ from datetime import datetime
 from models import Search
 
 from yad2wrapper import get_search_item_ids
-from yad2utils import *
+from yad2constants import *
 
-# initialize logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -62,9 +61,10 @@ def scan_new_items() -> None:
         try:
             logger.info(f'request new ads of search id: {search.id}, name: {search.name}, '
                         f'for only the ads posted after: {search.last_scan_time}')
-            new_item_ids = get_search_item_ids(search_parameters=search.url, min_addition_date=search_last_scan_time)
-        except Exception as exception:
-            logger.error(f"failed to get search: {search.id}, {search.name} new ads", exception)
+            new_item_ids = get_search_item_ids(search_url=search.url, min_addition_date=search_last_scan_time)
+        except Exception as e:
+            logger.error(f'failed to get search: {search.id}, {search.name} new ads')
+            logger.error(e, exc_info=True)
             continue
 
         # if there are new items - notify them to the user
@@ -87,5 +87,3 @@ def lambda_handler(event, context):
         scan_new_items()
     except Exception as error:
         logger.error(error)
-
-

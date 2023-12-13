@@ -91,10 +91,9 @@ MENU_INITIAL_TEXT = 'בחר את הפעולה הרצויה'
 
 MENU_ADD_SEARCH_BUTTON_TEXT = 'הוספת חיפוש חדש 🔎'
 
-MENU_SEARCH_LIST_BUTTON_TEXT = 'החיפושים שלי 📃'
+VALIDATING_SEARCH_LINK_AWAIT_MESSAGE = 'מוודא שהלינק תקין..'
 
-# Yad2 url constants
-YAD2_VALID_NETLOC = 'www.yad2.co.il'
+MENU_SEARCH_LIST_BUTTON_TEXT = 'החיפושים שלי 📃'
 
 # Regex patterns
 DELETE_SEARCH_REGEX_PATTERN = 'ds_(.*)'
