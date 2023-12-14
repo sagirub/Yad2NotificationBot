@@ -1,44 +1,14 @@
-import os
 import logging
-import requests
 from datetime import datetime
 
 from models import Search
 
 from yad2wrapper import get_search_item_ids
 from yad2constants import *
+from basictelegram import send_telegram_bot_message, send_telegram_bot_message_with_link
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-BOT_TOKEN = os.environ['BOT_TOKEN']
-
-
-def send_telegram_bot_message(bot_token: str, chat_id: int, message: str) -> None:
-    """ send a regular message from a bot to user by his chat id """
-
-    params = {
-        "chat_id": chat_id,
-        "text": message
-    }
-    requests.get(
-        f'https://api.telegram.org/bot{bot_token}/sendMessage',
-        params=params
-    )
-
-
-def send_telegram_bot_message_with_link(bot_token: str, chat_id: int, link: str, link_text: str) -> None:
-    """ send a markdown message (can contain link as text) from a bot to user by his chat id """
-
-    params = {
-        "chat_id": chat_id,
-        "text": f'[{link_text}]({link})',
-        "parse_mode": "markdown",
-    }
-    requests.get(
-        f'https://api.telegram.org/bot{bot_token}/sendMessage',
-        params=params
-    )
 
 
 def scan_new_items() -> None:
@@ -71,11 +41,11 @@ def scan_new_items() -> None:
         if new_item_ids:
             logger.info(f'{len(new_item_ids)} new ads seen for search id: {search.id},name: {search.name}')
 
-            send_telegram_bot_message(BOT_TOKEN, search.chat_id, f'נצפו מודעות חדשות בחיפוש: {search.name}')
+            send_telegram_bot_message(search.chat_id, f'נצפו מודעות חדשות בחיפוש: {search.name}')
 
             for item_id in new_item_ids:
-                send_telegram_bot_message_with_link(BOT_TOKEN,
-                                                    search.chat_id, f'{ITEM_API_BASE_URL}{item_id}',
+                send_telegram_bot_message_with_link(search.chat_id,
+                                                    f'{ITEM_API_BASE_URL}{item_id}',
                                                     'לחץ כאן לפתיחת למודעה')
 
         #  update last scan time in the db
