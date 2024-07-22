@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  TelegramYad2NotificationBot-Template
+
+Parameters:
+  BotToken:
+    Type: String
+  TableName:
+    Type: String
+  TimeZone:
+    Type: String
+    Default: Asia/Jerusalem
+
+Globals:
+  Function:
+    Layers:
+      - !Ref DBConnectorLayer
+      - !Ref Yad2LibraryLayer
+
+Resources:
+  TelegramYad2NotificationBotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/bot/
+      Handler: main.lambda_handler
+      Runtime: python3.9
+      Timeout: 30
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref BotToken
+          DB_TABLE_NAME: !Ref TableName
+          TZ: !Ref TimeZone
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+
+  ItemsScannerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/item-scanner-job/
+      Handler: item-scanner-job.lambda_handler
+      Runtime: python3.9
+      Timeout: 300
+      Environment:
+        Variables:
+          BOT_TOKEN: !Ref BotToken
+          DB_TABLE_NAME: !Ref TableName
+          TZ: !Ref TimeZone
+      Layers:
+        - !Ref TelegramBasicConnectorLayer
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Events:
+        EventBridgeScheduler:
+          Type: ScheduleV2
+          Properties:
+            Description: scheduler to scan and notify new items
+            ScheduleExpression: cron(0/20 7-22 ? * SUN-FRI *)
+            ScheduleExpressionTimezone: Asia/Jerusalem
+
+  DBConnectorLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: db-connector-layer
+      ContentUri: src/connectors/db/
+      Description: lambda layer for connection to the db
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
+
+  TelegramBasicConnectorLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: basic-telegram-library-layer
+      ContentUri: src/connectors/telegram/
+      Description: lambda layer for basic telegram functions library
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
+
+  Yad2LibraryLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: yad2-library-layer
+      ContentUri: src/yad2/
+      Description: lambda layer for yad2 library
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.9
+
+Outputs:
+  TelegramApi:
+    Description: 'Lambda Function URL to set in telegram webhook'
+    Value:
+      Fn::GetAtt: TelegramYad2NotificationBotFunctionUrl.FunctionUrl
+
+
