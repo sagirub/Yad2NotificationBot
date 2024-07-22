@@ -58,6 +58,7 @@ Resources:
         EventBridgeScheduler:
           Type: ScheduleV2
           Properties:
+            OmitName: True
             Description: scheduler to scan and notify new items
             ScheduleExpression: cron(0/20 7-22 ? * SUN-FRI *)
             ScheduleExpressionTimezone: Asia/Jerusalem
