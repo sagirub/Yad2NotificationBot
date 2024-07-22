@@ -1,0 +1,44 @@
+on:
+  push:
+    branches:
+      - main
+
+env:
+  BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'  # Ensure Python 3.9 is used
+
+      - name: Set up SAM
+        uses: aws-actions/setup-sam@v1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.REGION }}
+
+      - name: Build SAM Application
+        run: sam build
+
+      - name: Deploy SAM Application
+        run: sam deploy --resolve-s3 --stack-name ${{env.STACK_NAME}} --capabilities CAPABILITY_IAM --parameter-overrides BotToken=${{ env.BOT_TOKEN }} TableName=${{ env.DB_TABLE_NAME }} --region ${{ env.REGION }}
+      - name: Get Telegram Function URL
+        id: get-url
+        run: |
+          API_URL=$(aws cloudformation describe-stacks --stack-name ${{env.STACK_NAME}} --query "Stacks[0].Outputs[?OutputKey=='TelegramApi'].OutputValue" --output text)
+          echo "::set-output name=api_url::$API_URL"
+
+      - name: Set Telegram Webhook
+        run: |
+          curl "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/setWebhook?url=${{ steps.get-url.outputs.api_url }}"
