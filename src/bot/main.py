@@ -16,7 +16,7 @@ from telegram.ext import (
 from telegram import Update
 
 from start_menu import start, cancel, menu
-from add_search import add_search, add_search_link, add_search_name
+from add_search import add_search, add_search_link, add_search_name, add_search_commercial_ads
 from search_list import search_list
 from delete_search import delete_search
 from error_handler import error_handler
@@ -64,7 +64,8 @@ def load_conversation_handlers(application: Application) -> None:
                       CallbackQueryHandler(add_search, pattern=f'^{str(ADD_SEARCH)}$')],
         states={
             ADD_SEARCH_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_search_link)],
-            ADD_SEARCH_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_search_name)]
+            ADD_SEARCH_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_search_name)],
+            ADD_SEARCH_COMMERCIAL_ADS: [CallbackQueryHandler(add_search_commercial_ads, pattern='^answer_')]
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
         allow_reentry=True

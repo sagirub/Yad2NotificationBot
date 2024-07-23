@@ -30,6 +30,7 @@ async def add_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def add_search_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the search link from the user after the command /search is issued"""
+
     search_url = update.message.text
 
     # send temporary message about url validation
@@ -56,8 +57,30 @@ async def add_search_link(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Get the name of the search after getting the search link"""
-    search_name = update.message.text
+    context.user_data['search_name'] = update.message.text
+
+    await update.message.reply_text(
+        text=CHOOSE_INCLUDE_COMMERCIAL_ADDS_MESSAGE,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("כן", callback_data='answer_yes')],
+            [InlineKeyboardButton("לא", callback_data='answer_no')]
+        ])
+    )
+
+    return ADD_SEARCH_COMMERCIAL_ADS
+
+
+async def add_search_commercial_ads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """choosing whether to filter commercial ads"""
+
+    query = update.callback_query
+    await query.answer()
+
+    search_name = context.user_data['search_name']
     search_link = context.user_data['search_link']
+    search_allow_commercial = True if query.data == 'answer_yes' else False
+    user_chat_id = update.effective_chat.id
+    user_name = update.effective_chat.first_name
 
     message = ADD_SEARCH_SUCCESS_END_MESSAGE
 
@@ -65,22 +88,24 @@ async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         new_search = Search(
             url=search_link,
-            chat_id=update.message.from_user.id,
+            chat_id=user_chat_id,
             name=search_name,
+            commercial_ads=search_allow_commercial,
             last_scan_time=str(datetime.now().isoformat()))
         new_search.save()
 
-        logger.info(f'new search was successfully added: user_id:{update.message.from_user.id}, \
-                    user_name: {update.message.chat.first_name}, \
-                    search_name: {search_name}, search_link: {search_link}')
+        logger.info(f'new search was successfully added: user_id:{user_chat_id}, \
+                           user_name: {user_name}, \
+                           search_name: {search_name}, search_link: {search_link}')
     except Exception as e:
         message = ADD_SEARCH_FAIL_END_MESSAGE
-        logger.error(f'failed to add a new search. user_id:{update.message.from_user.id}, \
-                            user_name: {update.message.chat.first_name}, \
-                            search_name: {search_name}, search_link: {search_link}')
+        logger.error(f'failed to add a new search. user_id:{user_chat_id}, \
+                                   user_name: {user_name}, \
+                                   search_name: {search_name}, search_link: {search_link}')
         logger.error(e, exc_info=True)
 
     # delete user search link from context
+    del context.user_data['search_name']
     del context.user_data['search_link']
 
     buttons = [
@@ -91,6 +116,6 @@ async def add_search_name(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    await update.message.reply_text(text=message, reply_markup=keyboard)
+    await update.callback_query.message.edit_text(text=message, reply_markup=keyboard)
 
     return END

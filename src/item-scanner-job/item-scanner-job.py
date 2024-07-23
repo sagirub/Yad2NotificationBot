@@ -31,7 +31,9 @@ def scan_new_items() -> None:
         try:
             logger.info(f'request new ads of search id: {search.id}, name: {search.name}, '
                         f'for only the ads posted after: {search.last_scan_time}')
-            new_item_ids = get_search_item_ids(search_url=search.url, min_addition_date=search_last_scan_time)
+            new_item_ids = get_search_item_ids(search_url=search.url,
+                                               commercial_items=search.commercial_ads,
+                                               min_addition_date=search_last_scan_time)
         except Exception as e:
             logger.error(f'failed to get search: {search.id}, {search.name} new ads')
             logger.error(e, exc_info=True)

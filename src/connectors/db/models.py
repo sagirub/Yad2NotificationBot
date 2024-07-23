@@ -1,7 +1,7 @@
 import os
 
 from pynamodb.models import Model
-from pynamodb.attributes import UnicodeAttribute, NumberAttribute
+from pynamodb.attributes import UnicodeAttribute, NumberAttribute, BooleanAttribute
 from base64 import b64encode
 from hashlib import md5
 
@@ -11,6 +11,7 @@ class Search(Model):
     url = UnicodeAttribute()
     chat_id = NumberAttribute()
     name = UnicodeAttribute()
+    commercial_ads = BooleanAttribute(default=False)
     last_scan_time = UnicodeAttribute()
 
     class Meta:

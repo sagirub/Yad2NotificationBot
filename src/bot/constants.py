@@ -9,7 +9,8 @@ DEBUG = os.getenv('DEBUG', False) == 'True'
 BOT_TOKEN = os.environ['BOT_TOKEN']
 
 
-START, MENU, MENU_SELECTING_ACTION, ADD_SEARCH, ADD_SEARCH_LINK, ADD_SEARCH_NAME, DELETE_SEARCH, SEARCH_LIST = range(8)
+START, MENU, MENU_SELECTING_ACTION, ADD_SEARCH, ADD_SEARCH_LINK, ADD_SEARCH_NAME, ADD_SEARCH_COMMERCIAL_ADS,\
+        DELETE_SEARCH, SEARCH_LIST = range(9)
 
 # Shortcut for ConversationHandler.END
 END = ConversationHandler.END
@@ -41,6 +42,10 @@ ADD_SEARCH_LINK_MESSAGE = (
         'מעולה! עכשיו תן שם לחיפוש שלך, לדוגמא:'
         '\n\n'
         'כל הרכבים הידניים מעל שנת 2015 עד 30,000 שקל'
+)
+
+CHOOSE_INCLUDE_COMMERCIAL_ADDS_MESSAGE = (
+        'האם לכלול מודעות מסחריות (סוחרים, סוכנויות, מתווכים)?'
 )
 
 ADD_SEARCH_LINK_ERROR_MESSAGE = (
