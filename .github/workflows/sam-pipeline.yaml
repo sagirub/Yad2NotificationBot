@@ -26,17 +26,18 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.REGION }}
+          aws-region: ${{ vars.REGION }}
 
       - name: Build SAM Application
         run: sam build
 
       - name: Deploy SAM Application
-        run: sam deploy --resolve-s3 --stack-name ${{env.STACK_NAME}} --capabilities CAPABILITY_IAM --parameter-overrides BotToken=${{ env.BOT_TOKEN }} TableName=${{ env.DB_TABLE_NAME }} --region ${{ env.REGION }}
+        run: sam deploy --resolve-s3 --stack-name ${{vars.STACK_NAME}} --capabilities CAPABILITY_IAM --parameter-overrides BotToken=${{ env.BOT_TOKEN }} TableName=${{ vars.DB_TABLE_NAME }} --region ${{ vars.REGION }}
+
       - name: Get Telegram Function URL
         id: get-url
         run: |
-          API_URL=$(aws cloudformation describe-stacks --stack-name ${{env.STACK_NAME}} --query "Stacks[0].Outputs[?OutputKey=='TelegramApi'].OutputValue" --output text)
+          API_URL=$(aws cloudformation describe-stacks --stack-name ${{vars.STACK_NAME}} --query "Stacks[0].Outputs[?OutputKey=='TelegramApi'].OutputValue" --output text)
           echo "::set-output name=api_url::$API_URL"
 
       - name: Set Telegram Webhook

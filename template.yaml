@@ -63,6 +63,20 @@ Resources:
             ScheduleExpression: cron(0/20 7-22 ? * SUN-FRI *)
             ScheduleExpressionTimezone: Asia/Jerusalem
 
+  SearchesDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
   DBConnectorLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
