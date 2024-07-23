@@ -33,6 +33,7 @@ jobs:
 
       - name: Deploy SAM Application
         run: sam deploy --resolve-s3 --stack-name ${{vars.STACK_NAME}} --capabilities CAPABILITY_IAM --parameter-overrides BotToken=${{ env.BOT_TOKEN }} TableName=${{ vars.DB_TABLE_NAME }} --region ${{ vars.REGION }}
+
       - name: Get Telegram Function URL
         id: get-url
         run: |
