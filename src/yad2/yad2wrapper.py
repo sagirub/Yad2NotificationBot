@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def get_search_item_ids(search_url: str, max_pages: int = sys.maxsize,
+def get_search_item_ids(search_url: str,
+                        include_business_ads: bool = False,
+                        max_pages: int = sys.maxsize,
                         min_addition_date: datetime = datetime.min) -> list:
     """
     Gets the current item ids appears in search by the search parameters
@@ -26,6 +28,8 @@ def get_search_item_ids(search_url: str, max_pages: int = sys.maxsize,
     ----------
     search_url : str
         The url of the search to find his current item ids
+    include_business_ads: bool
+        A boolean indicating whether to include business ads
     max_pages: int, optional
         A int used to limit the number of search's pages requests
         (to avoid unnecessary requests of old items)
@@ -68,6 +72,10 @@ def get_search_item_ids(search_url: str, max_pages: int = sys.maxsize,
                       for item in page_items
                       if 'id' in item and
                       datetime.strptime(item['date_added'], YAD2_DATETIME_STRING_FORMAT) > min_addition_date]
+
+        # Filter merchant and bussines ads
+        if not include_business_ads:
+            page_items = [item for item in page_items if item['merchant'] is False]
 
         # add all page item ids to the list to return
         search_item_ids.extend([item['id'] for item in page_items])
