@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "yad2-notification-bot"
+version = "0.1.0"
+description = ""
+authors = ["sagi <you@example.com>"]
+
+# Add this:
+packages = [
+    { include = "bot", from = "src" },
+    { include = "api", from = "src" },
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+aiogram = "^3.22.0"
+pydantic = "<2.12"
+pydantic-settings = "^2.11.0"
+certifi = "^2025.11.12"
+pip-system-certs = "^5.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^8.0"
