@@ -1,0 +1,20 @@
+{
+  "name": "yad2-notification-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for Yad2 search notifications",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:dev": "serverless deploy --stage dev",
+    "deploy:prod": "serverless deploy --stage production",
+    "remove": "serverless remove",
+    "logs": "serverless logs -f telegramWebhook -t",
+    "info": "serverless info"
+  },
+  "devDependencies": {
+    "serverless": "^3.38.0",
+    "serverless-plugin-scripts": "^1.0.2",
+    "serverless-python-requirements": "^6.0.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

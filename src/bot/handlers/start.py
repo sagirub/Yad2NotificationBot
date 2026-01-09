@@ -1,7 +1,8 @@
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from bot.keyboards.main_menu import main_menu_keyboard
+
+from src.bot.keyboards.main_menu import main_menu_keyboard
 
 router = Router()
 

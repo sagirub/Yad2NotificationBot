@@ -3,7 +3,8 @@
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
-from config import settings
+
+from src.config import settings
 
 # Use MemoryStorage for FSM.
 # For Lambda, this will only persist per-request, which is fine

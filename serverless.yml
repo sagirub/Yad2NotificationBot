@@ -1,0 +1,142 @@
+service: yad2-notification-bot
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: ${opt:region, 'eu-central-1'}
+  stage: ${opt:stage, 'dev'}
+  
+  # API Gateway settings
+  httpApi:
+    cors: true
+
+  environment:
+    # Bot token - use SSM Parameter Store in production
+    TELEGRAM_BOT_TOKEN: ${env:TELEGRAM_BOT_TOKEN, ''}
+    DYNAMODB_TABLE: ${self:service}-${self:provider.stage}-searches
+    AWS_REGION_NAME: ${self:provider.region}
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource:
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/*"
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: "*"
+
+functions:
+  # Telegram webhook handler
+  telegramWebhook:
+    handler: src.api.lambda_entry.handler
+    memorySize: 256
+    timeout: 25
+    events:
+      - httpApi:
+          path: /webhook
+          method: post
+      - httpApi:
+          path: /health
+          method: get
+
+  # Search scanner - runs every 30 minutes
+  # searchScanner:
+  #   handler: src.scanner.lambda_handler.handler
+  #   memorySize: 512
+  #   timeout: 300
+  #   events:
+  #     - schedule:
+  #         rate: rate(30 minutes)
+  #         enabled: true
+
+plugins:
+  - serverless-python-requirements
+  - serverless-plugin-scripts
+
+custom:
+  pythonRequirements:
+    # Use Docker to build packages for Linux (required for binary packages like pydantic)
+    # Set to true if Docker is running, false otherwise
+    dockerizePip: false
+    # Use pip to download manylinux wheels
+    pipCmdExtraArgs:
+      - "--platform"
+      - "manylinux2014_x86_64"
+      - "--only-binary=:all:"
+    # Don't zip requirements - include them directly in the package
+    zip: false
+    slim: true
+    slimPatterns:
+      - "**/*.egg-info*"
+      - "**/__pycache__"
+      - "**/tests"
+    noDeploy:
+      - pytest
+      - pytest-asyncio
+      - pip
+      - setuptools
+  
+  # Auto-set webhook after deployment
+  scripts:
+    hooks:
+      'deploy:finalize': |
+        echo "Setting Telegram webhook..."
+        WEBHOOK_URL=$(serverless info --stage ${self:provider.stage} 2>/dev/null | grep "POST -" | awk '{print $3}')
+        if [ -n "$WEBHOOK_URL" ] && [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\": \"$WEBHOOK_URL\", \"allowed_updates\": [\"message\", \"callback_query\"]}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('✅ Webhook set!' if r.get('ok') else f'❌ Error: {r.get(\"description\")}')"
+        else
+          echo "⚠️ Skipping webhook setup (TELEGRAM_BOT_TOKEN not set or URL not found)"
+        fi
+
+resources:
+  Resources:
+    # DynamoDB table for user searches
+    UserSearchesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: search_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: search_id
+            KeyType: RANGE
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
+  Outputs:
+    WebhookUrl:
+      Description: "Telegram Webhook URL"
+      Value:
+        Fn::Join:
+          - ""
+          - - "https://"
+            - Ref: HttpApi
+            - ".execute-api.${self:provider.region}.amazonaws.com/webhook"
+      Export:
+        Name: ${self:service}-${self:provider.stage}-webhook-url

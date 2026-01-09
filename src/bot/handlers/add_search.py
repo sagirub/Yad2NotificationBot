@@ -1,8 +1,9 @@
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from bot.states import AddSearch
-from bot.keyboards.main_menu import main_menu_keyboard
-from bot.db import mock_db
+
+from src.bot.states import AddSearch
+from src.bot.keyboards.main_menu import main_menu_keyboard
+from src.bot.db import mock_db
 
 router = Router()
 

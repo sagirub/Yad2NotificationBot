@@ -1,6 +1,7 @@
 from aiogram import F, Router, types
-from bot.keyboards.search_list import SearchCallback, search_list_keyboard
-from bot.db import mock_db
+
+from src.bot.keyboards.search_list import SearchCallback, search_list_keyboard
+from src.bot.db import mock_db
 
 router = Router()
 

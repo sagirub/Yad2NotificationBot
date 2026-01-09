@@ -1,5 +1,6 @@
 from aiogram import Router
-from bot.handlers import start, add_search, list_searches
+
+from src.bot.handlers import start, add_search, list_searches
 
 # This is your main router
 bot_router = Router()

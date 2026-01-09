@@ -1,6 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters.callback_data import CallbackData
-from bot.db.mock_db import MOCK_DB
 
 
 class SearchCallback(CallbackData, prefix="search"):

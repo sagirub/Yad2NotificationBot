@@ -1,0 +1,97 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Deployment stage'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - production
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Serverless Framework
+        run: |
+          npm install -g serverless
+          npm install
+
+      - name: Install serverless plugins
+        run: |
+          npm install --save-dev serverless-python-requirements
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "stage=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            echo "stage=production" >> $GITHUB_OUTPUT
+          else
+            echo "stage=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to AWS
+        run: |
+          serverless deploy --stage ${{ steps.stage.outputs.stage }} --region ${{ env.AWS_REGION }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Get deployment outputs
+        id: outputs
+        run: |
+          WEBHOOK_URL=$(serverless info --stage ${{ steps.stage.outputs.stage }} --region ${{ env.AWS_REGION }} 2>/dev/null | grep -oP 'https://[^\s]+/webhook' || echo "")
+          echo "webhook_url=$WEBHOOK_URL" >> $GITHUB_OUTPUT
+
+      - name: Set Telegram Webhook
+        if: steps.outputs.outputs.webhook_url != ''
+        run: |
+          pip install requests
+          python scripts/set_webhook.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_URL: ${{ steps.outputs.outputs.webhook_url }}
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Stage:** ${{ steps.stage.outputs.stage }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.outputs.outputs.webhook_url }}" ]; then
+            echo "**Webhook URL:** ${{ steps.outputs.outputs.webhook_url }}" >> $GITHUB_STEP_SUMMARY
+          fi
