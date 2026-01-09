@@ -89,6 +89,9 @@ custom:
       - pytest-asyncio
       - pip
       - setuptools
+      - boto3
+      - botocore
+      - s3transfer
   
   # Auto-set webhook after deployment
   scripts:

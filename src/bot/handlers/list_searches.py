@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 
 from src.bot.keyboards.search_list import SearchCallback, search_list_keyboard
-from src.bot.db import mock_db
+from src.bot.db import get_searches, delete_search
 
 router = Router()
 
@@ -11,7 +11,7 @@ async def cb_view_searches(callback: types.CallbackQuery):
     user_id = str(callback.from_user.id)
     
     # --- Get from Database ---
-    searches = await mock_db.get_searches(user_id)
+    searches = await get_searches(user_id)
     # --- End Database Logic ---
     
     if not searches:
@@ -33,13 +33,13 @@ async def cb_delete_search(callback: types.CallbackQuery, callback_data: SearchC
     search_id = callback_data.search_id  # Safely get the ID
     
     # --- Delete from Database ---
-    removed_search = await mock_db.delete_search(user_id, search_id)
+    removed_search = await delete_search(user_id, search_id)
     # --- End Database Logic ---
     
     if removed_search:
         await callback.answer(f"Deleted: {removed_search['name']}")
         # Refresh the list by re-getting the data and editing the markup
-        updated_searches = await mock_db.get_searches(user_id)
+        updated_searches = await get_searches(user_id)
         await callback.message.edit_reply_markup(
             reply_markup=search_list_keyboard(updated_searches)
         )

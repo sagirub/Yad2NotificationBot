@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 
 from src.bot.states import AddSearch
 from src.bot.keyboards.main_menu import main_menu_keyboard
-from src.bot.db import mock_db
+from src.bot.db import add_search as db_add_search
 
 router = Router()
 
@@ -58,7 +58,7 @@ async def handle_name(message: types.Message, state: FSMContext):
         return
 
     # --- Add to Database ---
-    await mock_db.add_search(user_id=user_id, name=name, link=link)
+    await db_add_search(user_id=user_id, name=name, link=link)
     # --- End Database Logic ---
     
     await state.clear()
