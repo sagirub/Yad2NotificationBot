@@ -16,7 +16,12 @@ provider:
     # Bot token - use SSM Parameter Store in production
     TELEGRAM_BOT_TOKEN: ${env:TELEGRAM_BOT_TOKEN, ''}
     DYNAMODB_TABLE: ${self:service}-${self:provider.stage}-searches
+    STATS_TABLE: ${self:service}-${self:provider.stage}-stats
     AWS_REGION_NAME: ${self:provider.region}
+    # Admin chat ID for stats notifications
+    ADMIN_CHAT_ID: ${env:ADMIN_CHAT_ID, ''}
+    # Scanner settings
+    STATS_RETENTION_DAYS: "7"
 
   iam:
     role:
@@ -32,6 +37,8 @@ provider:
           Resource:
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/*"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STATS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.STATS_TABLE}/index/*"
         - Effect: Allow
           Action:
             - logs:CreateLogGroup
@@ -54,14 +61,16 @@ functions:
           method: get
 
   # Search scanner - runs every 30 minutes
-  # searchScanner:
-  #   handler: src.scanner.lambda_handler.handler
-  #   memorySize: 512
-  #   timeout: 300
-  #   events:
-  #     - schedule:
-  #         rate: rate(30 minutes)
-  #         enabled: true
+  # Timezone check is done in the Lambda handler (6 AM - 12 AM Israel time)
+  searchScanner:
+    handler: src.scanner.lambda_handler.handler
+    memorySize: 512
+    timeout: 300
+    events:
+      - schedule:
+          rate: rate(30 minutes)
+          enabled: true
+          description: "Scan Yad2 searches for new items every 30 minutes"
 
 plugins:
   - serverless-python-requirements
@@ -132,6 +141,31 @@ resources:
           - Key: Service
             Value: ${self:service}
 
+    # DynamoDB table for scanner stats
+    ScannerStatsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.STATS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: stat_date
+            AttributeType: S
+          - AttributeName: stat_hour
+            AttributeType: S
+        KeySchema:
+          - AttributeName: stat_date
+            KeyType: HASH
+          - AttributeName: stat_hour
+            KeyType: RANGE
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+
   Outputs:
     WebhookUrl:
       Description: "Telegram Webhook URL"
@@ -143,3 +177,9 @@ resources:
             - ".execute-api.${self:provider.region}.amazonaws.com/webhook"
       Export:
         Name: ${self:service}-${self:provider.stage}-webhook-url
+    
+    StatsTableName:
+      Description: "Scanner Stats DynamoDB Table"
+      Value: ${self:provider.environment.STATS_TABLE}
+      Export:
+        Name: ${self:service}-${self:provider.stage}-stats-table

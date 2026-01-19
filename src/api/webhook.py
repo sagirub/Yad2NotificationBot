@@ -8,7 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from src.config import settings
 
 # Import handlers directly to register them on fresh routers
-from src.bot.handlers import start, add_search, list_searches
+from src.bot.handlers import start, add_search, list_searches, stats
 
 router = APIRouter()
 
@@ -30,6 +30,7 @@ def get_dispatcher():
         main_router.include_router(start.router)
         main_router.include_router(add_search.router)
         main_router.include_router(list_searches.router)
+        main_router.include_router(stats.router)
         
         _dp.include_router(main_router)
     
