@@ -12,6 +12,7 @@ from aiogram.filters import Command
 from src.config import settings
 from src.bot.db.dynamodb import get_stats_summary, get_latest_stats
 from src.scanner.stats import format_summary_message
+from src.scanner.lambda_usage import get_lambda_usage, format_lambda_usage_message
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ async def stats_command(message: types.Message):
         /stats today - Today's detailed stats
         /stats week - Last 7 days summary
         /stats recent - Last 10 scan runs
+        /stats lambda - Lambda free tier usage from AWS
     """
     user_id = message.from_user.id
     
@@ -59,6 +61,10 @@ async def stats_command(message: types.Message):
         elif period == "recent":
             recent = await get_latest_stats(limit=10)
             response = format_recent_stats(recent)
+        elif period == "lambda":
+            # Get real Lambda usage from CloudWatch
+            usage = get_lambda_usage()
+            response = format_lambda_usage_message(usage)
         else:
             # Default to today
             summary = await get_stats_summary(days=1)
@@ -145,6 +151,7 @@ async def help_stats_command(message: types.Message):
 /stats today - Today's detailed stats
 /stats week - Last 7 days summary
 /stats recent - Last 10 scan runs
+/stats lambda - AWS Lambda free tier usage
 
 *Metrics Explained:*
 • 📊 Searches Scanned - Number of user searches processed
@@ -157,6 +164,10 @@ async def help_stats_command(message: types.Message):
 *Detection Methods:*
 • 📷 Image URL - Timestamp extracted from image filename
 • 🔗 API Call - Fallback to item detail API
+
+*Lambda Free Tier (Monthly):*
+• 1,000,000 invocations
+• 400,000 GB-seconds compute time
 """
     
     await message.answer(help_text, parse_mode="Markdown")

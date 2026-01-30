@@ -25,7 +25,7 @@ def search_list_keyboard(user_searches: list) -> InlineKeyboardMarkup:
 
     # Add a "back" button to the menu
     keyboard_buttons.append(
-        [InlineKeyboardButton(text="⬅️ Back to menu", callback_data="start_menu")]
+        [InlineKeyboardButton(text="⬅️ חזרה לתפריט", callback_data="start_menu")]
     )
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)

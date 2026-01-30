@@ -8,6 +8,6 @@ router = Router()
 @router.message(Command("start"))
 async def start(message: types.Message):
     await message.answer(
-        "Welcome! 🤖",
+        "ברוכים הבאים! 🤖",
         reply_markup=search_menu_keyboard()
     )

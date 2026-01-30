@@ -20,8 +20,13 @@ provider:
     AWS_REGION_NAME: ${self:provider.region}
     # Admin chat ID for stats notifications
     ADMIN_CHAT_ID: ${env:ADMIN_CHAT_ID, ''}
+    # Separate bot token for admin stats (optional - uses main bot if not set)
+    ADMIN_BOT_TOKEN: ${env:ADMIN_BOT_TOKEN, ''}
     # Scanner settings
     STATS_RETENTION_DAYS: "7"
+    # Orchestrator settings
+    SCANNER_BATCH_SIZE: "3"
+    WORKER_FUNCTION_NAME: ${self:service}-${self:provider.stage}-searchWorker
 
   iam:
     role:
@@ -45,6 +50,16 @@ provider:
             - logs:CreateLogStream
             - logs:PutLogEvents
           Resource: "*"
+        - Effect: Allow
+          Action:
+            - cloudwatch:GetMetricStatistics
+            - cloudwatch:GetMetricData
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource:
+            - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-searchWorker"
 
 functions:
   # Telegram webhook handler
@@ -60,8 +75,34 @@ functions:
           path: /health
           method: get
 
-  # Search scanner - runs every 30 minutes
-  # Timezone check is done in the Lambda handler (6 AM - 12 AM Israel time)
+  # Search orchestrator - runs every 30 minutes during scan hours only
+  # Splits searches into batches, invokes workers, and sends centralized notification
+  #
+  # Scan hours: 6 AM - 12 AM Israel time (UTC+2/+3)
+  # Cron runs: 3 AM - 10 PM UTC to cover both standard time and DST
+  # This avoids wasting Lambda invocations during off-hours
+  searchOrchestrator:
+    handler: src.scanner.orchestrator.handler
+    memorySize: 256
+    timeout: 120  # Increased to wait for workers synchronously
+    events:
+      # Run every 30 minutes, but only during hours 3-21 UTC (6 AM - midnight Israel)
+      # Cron format: minute hour day-of-month month day-of-week year
+      - schedule:
+          rate: cron(0,30 3-21 * * ? *)
+          enabled: true
+          description: "Orchestrate Yad2 search scanning every 30 minutes (6 AM - midnight Israel time)"
+
+  # Search worker - invoked by orchestrator with a batch of searches
+  # Each worker gets a different IP address to avoid rate limiting
+  searchWorker:
+    handler: src.scanner.worker.handler
+    memorySize: 512
+    timeout: 300
+    # No events - invoked by orchestrator
+
+  # Legacy search scanner - kept for backward compatibility
+  # Can be disabled once orchestrator is verified working
   searchScanner:
     handler: src.scanner.lambda_handler.handler
     memorySize: 512
@@ -69,8 +110,8 @@ functions:
     events:
       - schedule:
           rate: rate(30 minutes)
-          enabled: true
-          description: "Scan Yad2 searches for new items every 30 minutes"
+          enabled: false
+          description: "Legacy scanner - disabled in favor of orchestrator"
 
 plugins:
   - serverless-python-requirements

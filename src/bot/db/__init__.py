@@ -25,6 +25,7 @@ if USE_DYNAMODB:
         get_search_by_id,
         update_search_scan_results,
         get_all_searches,
+        get_total_search_count,
     )
 else:
     logger.info("Using mock_db for database (local development)")
@@ -56,12 +57,18 @@ else:
             for search in searches:
                 all_searches.append({**search, "user_id": user_id})
         return all_searches
+    
+    async def get_total_search_count():
+        """Stub for local development."""
+        from src.bot.db.mock_db import MOCK_DB
+        return sum(len(searches) for searches in MOCK_DB.values())
 
 __all__ = [
     "get_searches",
-    "add_search", 
+    "add_search",
     "delete_search",
     "get_search_by_id",
     "update_search_scan_results",
     "get_all_searches",
+    "get_total_search_count",
 ]

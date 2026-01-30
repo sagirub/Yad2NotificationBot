@@ -80,7 +80,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     try:
         scanner = ItemScanner()
-        results = scanner.scan_all_searches_sync()
+        results = scanner.scan_all_searches_sync(lambda_context=context)
         
         logger.info(f"Scan completed: {json.dumps(results)}")
         

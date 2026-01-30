@@ -3,11 +3,12 @@ Tests for the Scanner module.
 """
 
 import pytest
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
 from src.scanner.scanner import ItemScanner, scan_new_items
 from src.scanner.notifier import TelegramNotifier
-from src.yad2.parser import Yad2Item
+from src.yad2.parser import Yad2Item, SearchResult
 
 
 class TestItemScanner:
@@ -22,7 +23,8 @@ class TestItemScanner:
     
     @pytest.fixture
     def sample_items(self):
-        """Create sample Yad2 items."""
+        """Create sample Yad2 items with created_at for detection."""
+        now = datetime.now(timezone.utc)
         return [
             Yad2Item(
                 id="item1",
@@ -31,6 +33,8 @@ class TestItemScanner:
                 price=5000,
                 link="https://www.yad2.co.il/item/item1",
                 location="תל אביב",
+                created_at=now,
+                created_at_source="image_url",
             ),
             Yad2Item(
                 id="item2",
@@ -39,6 +43,8 @@ class TestItemScanner:
                 price=6000,
                 link="https://www.yad2.co.il/item/item2",
                 location="רמת גן",
+                created_at=now,
+                created_at_source="image_url",
             ),
         ]
     
@@ -53,6 +59,9 @@ class TestItemScanner:
             "created_at": "2024-01-01T00:00:00",
             "last_scanned_at": "2024-01-14T00:00:00",
             "last_item_ids": ["old_item1", "old_item2"],
+            "is_initial_scan_complete": True,
+            "is_small_search": True,  # Use ID-bank-only detection
+            "total_items": 10,
         }
     
     @pytest.mark.asyncio
@@ -65,9 +74,10 @@ class TestItemScanner:
         scanner = ItemScanner(notifier=mock_notifier)
         results = await scanner.scan_all_searches()
         
-        assert results["total_searches"] == 0
-        assert results["successful_scans"] == 0
-        assert results["new_items_found"] == 0
+        # Results now use ScanStats.to_dict() keys
+        assert results["searches_scanned"] == 0
+        assert results["items_found"] == 0
+        assert results["notifications_sent"] == 0
     
     @pytest.mark.asyncio
     @patch('src.scanner.scanner.get_all_searches')
@@ -75,19 +85,20 @@ class TestItemScanner:
     async def test_scan_all_searches_with_new_items(
         self, mock_update, mock_get_all, mock_notifier, sample_search, sample_items
     ):
-        """Test scanning with new items found."""
+        """Test scanning with new items found (small search - ID-bank detection)."""
         mock_get_all.return_value = [sample_search]
         mock_update.return_value = True
         
         scanner = ItemScanner(notifier=mock_notifier)
         
-        # Mock the parser to return sample items
-        with patch.object(scanner.parser, 'get_items', return_value=sample_items):
-            results = await scanner.scan_all_searches()
+        # Mock the parser to return sample items via get_search_result
+        mock_result = SearchResult(items=sample_items, total_results=10)
+        with patch.object(scanner.parser, 'get_search_result', return_value=mock_result):
+            with patch.object(scanner.parser, 'get_items', return_value=[]):  # No additional pages
+                results = await scanner.scan_all_searches()
         
-        assert results["total_searches"] == 1
-        assert results["successful_scans"] == 1
-        assert results["new_items_found"] == 2
+        assert results["searches_scanned"] == 1
+        assert results["items_found"] == 2  # Both items are new (not in last_item_ids)
         assert results["notifications_sent"] == 1
         
         # Verify notifier was called
@@ -107,12 +118,13 @@ class TestItemScanner:
         
         scanner = ItemScanner(notifier=mock_notifier)
         
-        with patch.object(scanner.parser, 'get_items', return_value=sample_items):
-            results = await scanner.scan_all_searches()
+        mock_result = SearchResult(items=sample_items, total_results=10)
+        with patch.object(scanner.parser, 'get_search_result', return_value=mock_result):
+            with patch.object(scanner.parser, 'get_items', return_value=[]):
+                results = await scanner.scan_all_searches()
         
-        assert results["total_searches"] == 1
-        assert results["successful_scans"] == 1
-        assert results["new_items_found"] == 0
+        assert results["searches_scanned"] == 1
+        assert results["items_found"] == 0
         assert results["notifications_sent"] == 0
         
         # Notifier should not be called when no new items
@@ -130,8 +142,10 @@ class TestItemScanner:
         
         scanner = ItemScanner(notifier=mock_notifier)
         
-        with patch.object(scanner.parser, 'get_items', return_value=sample_items):
-            await scanner.scan_all_searches()
+        mock_result = SearchResult(items=sample_items, total_results=10)
+        with patch.object(scanner.parser, 'get_search_result', return_value=mock_result):
+            with patch.object(scanner.parser, 'get_items', return_value=[]):
+                await scanner.scan_all_searches()
         
         # Verify update was called with correct parameters
         mock_update.assert_called_once()
@@ -156,11 +170,10 @@ class TestItemScanner:
         
         scanner = ItemScanner(notifier=mock_notifier)
         
-        with patch.object(scanner.parser, 'get_items', side_effect=Exception("API Error")):
+        with patch.object(scanner.parser, 'get_search_result', side_effect=Exception("API Error")):
             results = await scanner.scan_all_searches()
         
-        assert results["total_searches"] == 1
-        assert results["failed_scans"] == 1
+        assert results["searches_scanned"] == 0  # Failed scan doesn't count
         assert len(results["errors"]) == 1
     
     @pytest.mark.asyncio
@@ -169,7 +182,7 @@ class TestItemScanner:
     async def test_scan_multiple_searches(
         self, mock_update, mock_get_all, mock_notifier, sample_items
     ):
-        """Test scanning multiple searches."""
+        """Test scanning multiple searches (initial scans - no notifications)."""
         searches = [
             {
                 "user_id": "user1",
@@ -178,6 +191,7 @@ class TestItemScanner:
                 "link": "https://www.yad2.co.il/realestate/rent?city=5000",
                 "last_scanned_at": None,
                 "last_item_ids": [],
+                "is_initial_scan_complete": False,  # Initial scan
             },
             {
                 "user_id": "user2",
@@ -186,6 +200,7 @@ class TestItemScanner:
                 "link": "https://www.yad2.co.il/realestate/rent?city=6000",
                 "last_scanned_at": None,
                 "last_item_ids": [],
+                "is_initial_scan_complete": False,  # Initial scan
             },
         ]
         mock_get_all.return_value = searches
@@ -193,13 +208,15 @@ class TestItemScanner:
         
         scanner = ItemScanner(notifier=mock_notifier)
         
-        with patch.object(scanner.parser, 'get_items', return_value=sample_items):
-            results = await scanner.scan_all_searches()
+        mock_result = SearchResult(items=sample_items, total_results=10)
+        with patch.object(scanner.parser, 'get_search_result', return_value=mock_result):
+            with patch.object(scanner.parser, 'get_items', return_value=[]):
+                results = await scanner.scan_all_searches()
         
-        assert results["total_searches"] == 2
-        assert results["successful_scans"] == 2
-        assert results["new_items_found"] == 4  # 2 items per search
-        assert results["notifications_sent"] == 2
+        assert results["searches_scanned"] == 2
+        # Initial scans don't send notifications
+        assert results["items_found"] == 0
+        assert results["notifications_sent"] == 0
 
 
 class TestTelegramNotifier:

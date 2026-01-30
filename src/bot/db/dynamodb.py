@@ -10,6 +10,9 @@ Searches Table Schema:
 - last_scanned_at: ISO timestamp of last scan (optional)
 - last_item_ids: List of item IDs from last scan (for detecting new items)
 - is_initial_scan_complete: Boolean indicating if 3-page initial scan is done
+- total_items: Total number of items in the search (from first scan)
+- is_small_search: Boolean indicating if search uses ID-bank-only detection
+- exclude_commercial: Boolean indicating if commercial items should be filtered out
 
 Stats Table Schema:
 - stat_date (HASH key): Date in YYYY-MM-DD format
@@ -20,8 +23,9 @@ Stats Table Schema:
 - requests_success: Successful Yad2 requests
 - requests_failed: Failed requests
 - requests_blocked: Blocked by captcha/bot protection
-- detection_by_image: Items detected via image URL
-- detection_by_api: Items detected via API call
+- detection_by_id_bank: Items detected via ID-bank-only (small searches)
+- detection_by_image: Items detected via image URL timestamp (large searches)
+- detection_by_api: Items detected via API call (large searches)
 - ttl: TTL timestamp for auto-deletion (7 days)
 """
 
@@ -29,6 +33,7 @@ import os
 import uuid
 import logging
 import time
+from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 
@@ -114,7 +119,14 @@ async def get_searches(user_id: str) -> List[Dict[str, Any]]:
         return []
 
 
-async def add_search(user_id: str, name: str, link: str) -> Dict[str, Any]:
+async def add_search(
+    user_id: str,
+    name: str,
+    link: str,
+    total_items: int = None,
+    is_small_search: bool = None,
+    exclude_commercial: bool = False,
+) -> Dict[str, Any]:
     """
     Adds a new search for a user.
     
@@ -122,6 +134,9 @@ async def add_search(user_id: str, name: str, link: str) -> Dict[str, Any]:
         user_id: Telegram user ID
         name: User-friendly name for the search
         link: Yad2 search URL
+        total_items: Total number of items in the search (optional, from first scan)
+        is_small_search: Whether this is a small search using ID-bank-only detection
+        exclude_commercial: Whether to filter out commercial items (סוחרים/מתווכים)
         
     Returns:
         The created search dictionary
@@ -138,19 +153,29 @@ async def add_search(user_id: str, name: str, link: str) -> Dict[str, Any]:
         "last_scanned_at": None,
         "last_item_ids": [],
         "is_initial_scan_complete": False,
+        "exclude_commercial": exclude_commercial,
     }
+    
+    # Add optional fields if provided
+    if total_items is not None:
+        item["total_items"] = total_items
+    if is_small_search is not None:
+        item["is_small_search"] = is_small_search
     
     try:
         table = get_table()
         table.put_item(Item=item)
         
-        logger.info(f"Added search '{name}' for user {user_id}")
+        logger.info(f"Added search '{name}' for user {user_id} (total_items={total_items}, is_small={is_small_search}, exclude_commercial={exclude_commercial})")
         
         return {
             "id": search_id,
             "name": name,
             "link": link,
             "created_at": created_at,
+            "total_items": total_items,
+            "is_small_search": is_small_search,
+            "exclude_commercial": exclude_commercial,
         }
         
     except ClientError as e:
@@ -237,6 +262,8 @@ async def get_search_by_id(user_id: str, search_id: str) -> Optional[Dict[str, A
             "last_scanned_at": item.get("last_scanned_at"),
             "last_item_ids": item.get("last_item_ids", []),
             "is_initial_scan_complete": item.get("is_initial_scan_complete", False),
+            "total_items": item.get("total_items"),
+            "is_small_search": item.get("is_small_search"),
         }
         
     except ClientError as e:
@@ -249,6 +276,8 @@ async def update_search_scan_results(
     search_id: str,
     item_ids: List[str],
     is_initial_scan_complete: bool = None,
+    total_items: int = None,
+    is_small_search: bool = None,
 ) -> bool:
     """
     Updates a search with the latest scan results.
@@ -258,6 +287,8 @@ async def update_search_scan_results(
         search_id: UUID of the search
         item_ids: List of item IDs from the latest scan
         is_initial_scan_complete: If provided, update the initial scan flag
+        total_items: If provided, update the total items count
+        is_small_search: If provided, update the small search flag
         
     Returns:
         True if update was successful, False otherwise
@@ -275,6 +306,14 @@ async def update_search_scan_results(
             update_expr += ", is_initial_scan_complete = :isc"
             expr_values[":isc"] = is_initial_scan_complete
         
+        if total_items is not None:
+            update_expr += ", total_items = :ti"
+            expr_values[":ti"] = total_items
+        
+        if is_small_search is not None:
+            update_expr += ", is_small_search = :iss"
+            expr_values[":iss"] = is_small_search
+        
         table.update_item(
             Key={
                 "user_id": str(user_id),
@@ -288,6 +327,35 @@ async def update_search_scan_results(
     except ClientError as e:
         logger.error(f"Error updating scan results for search {search_id}: {e}")
         return False
+
+
+async def get_total_search_count() -> int:
+    """
+    Gets the total count of all searches across all users.
+    
+    Returns:
+        Total number of searches
+    """
+    try:
+        table = get_table()
+        response = table.scan(
+            Select='COUNT'
+        )
+        count = response.get('Count', 0)
+        
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                Select='COUNT',
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            count += response.get('Count', 0)
+        
+        return count
+        
+    except ClientError as e:
+        logger.error(f"Error counting searches: {e}")
+        return 0
 
 
 async def get_all_searches() -> List[Dict[str, Any]]:
@@ -312,6 +380,9 @@ async def get_all_searches() -> List[Dict[str, Any]]:
                 "last_scanned_at": item.get("last_scanned_at"),
                 "last_item_ids": item.get("last_item_ids", []),
                 "is_initial_scan_complete": item.get("is_initial_scan_complete", False),
+                "total_items": item.get("total_items"),
+                "is_small_search": item.get("is_small_search"),
+                "exclude_commercial": item.get("exclude_commercial", False),
             })
         
         # Handle pagination if there are more items
@@ -327,6 +398,9 @@ async def get_all_searches() -> List[Dict[str, Any]]:
                     "last_scanned_at": item.get("last_scanned_at"),
                     "last_item_ids": item.get("last_item_ids", []),
                     "is_initial_scan_complete": item.get("is_initial_scan_complete", False),
+                    "total_items": item.get("total_items"),
+                    "is_small_search": item.get("is_small_search"),
+                    "exclude_commercial": item.get("exclude_commercial", False),
                 })
         
         return searches
@@ -367,9 +441,14 @@ async def save_scan_stats(stats: Dict[str, Any]) -> bool:
             "requests_success": stats.get("requests_success", 0),
             "requests_failed": stats.get("requests_failed", 0),
             "requests_blocked": stats.get("requests_blocked", 0),
+            "detection_by_id_bank": stats.get("detection_by_id_bank", 0),
             "detection_by_image": stats.get("detection_by_image", 0),
             "detection_by_api": stats.get("detection_by_api", 0),
-            "duration_seconds": stats.get("duration_seconds", 0),
+            "duration_seconds": Decimal(str(stats.get("duration_seconds", 0))),
+            "lambda_memory_mb": stats.get("lambda_memory_mb", 0),
+            "lambda_billed_duration_ms": stats.get("lambda_billed_duration_ms", 0),
+            "lambda_gb_seconds": Decimal(str(stats.get("lambda_gb_seconds", 0))),
+            "blocked_searches": stats.get("blocked_searches", []),
             "ttl": ttl,
         }
         
@@ -426,8 +505,10 @@ async def get_stats_summary(days: int = 1) -> Dict[str, Any]:
             "total_requests_success": 0,
             "total_requests_failed": 0,
             "total_requests_blocked": 0,
+            "total_detection_by_id_bank": 0,
             "total_detection_by_image": 0,
             "total_detection_by_api": 0,
+            "total_lambda_gb_seconds": 0.0,
             "total_runs": 0,
             "period_days": days,
         }
@@ -448,8 +529,10 @@ async def get_stats_summary(days: int = 1) -> Dict[str, Any]:
                 summary["total_requests_success"] += int(item.get("requests_success", 0))
                 summary["total_requests_failed"] += int(item.get("requests_failed", 0))
                 summary["total_requests_blocked"] += int(item.get("requests_blocked", 0))
+                summary["total_detection_by_id_bank"] += int(item.get("detection_by_id_bank", 0))
                 summary["total_detection_by_image"] += int(item.get("detection_by_image", 0))
                 summary["total_detection_by_api"] += int(item.get("detection_by_api", 0))
+                summary["total_lambda_gb_seconds"] += float(item.get("lambda_gb_seconds", 0))
                 summary["total_runs"] += 1
         
         # Calculate rates

@@ -3,6 +3,9 @@ Telegram Notifier Module
 
 This module handles sending notifications to users about new Yad2 listings
 and admin notifications for scanner stats and alerts.
+
+Admin notifications are sent via a separate bot (ADMIN_BOT_TOKEN) to keep
+stats separate from the main user-facing bot.
 """
 
 import logging
@@ -20,23 +23,47 @@ logger = logging.getLogger(__name__)
 class TelegramNotifier:
     """
     Sends Telegram notifications for new Yad2 items and admin stats.
+    
+    Uses two separate bots:
+    - Main bot (TELEGRAM_BOT_TOKEN): For user notifications about new listings
+    - Admin bot (ADMIN_BOT_TOKEN): For stats and admin alerts (falls back to main bot if not set)
     """
     
-    def __init__(self, bot_token: str = None, admin_chat_id: str = None):
+    def __init__(self, bot_token: str = None, admin_chat_id: str = None, admin_bot_token: str = None):
         """
         Initialize the notifier.
         
         Args:
-            bot_token: Telegram bot token (uses env var if not provided)
+            bot_token: Telegram bot token for user notifications (uses env var if not provided)
             admin_chat_id: Admin chat ID for stats notifications (uses settings if not provided)
+            admin_bot_token: Separate bot token for admin notifications (uses env var if not provided)
         """
+        # Main bot for user notifications
         self.bot_token = bot_token or os.environ.get("TELEGRAM_BOT_TOKEN") or settings.TELEGRAM_BOT_TOKEN
         if not self.bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN is required")
         
+        # Admin bot for stats (falls back to main bot if not configured)
+        self.admin_bot_token = (
+            admin_bot_token
+            or os.environ.get("ADMIN_BOT_TOKEN")
+            or getattr(settings, 'ADMIN_BOT_TOKEN', None)
+            or self.bot_token  # Fallback to main bot
+        )
+        
         self.admin_chat_id = admin_chat_id or os.environ.get("ADMIN_CHAT_ID") or settings.ADMIN_CHAT_ID
+        
+        # API base URLs for each bot
         self.api_base = f"https://api.telegram.org/bot{self.bot_token}"
+        self.admin_api_base = f"https://api.telegram.org/bot{self.admin_bot_token}"
+        
         self.session = requests.Session()
+        
+        # Log which bot is being used for admin
+        if self.admin_bot_token != self.bot_token:
+            logger.info("Using separate admin bot for stats notifications")
+        else:
+            logger.info("Using main bot for admin notifications (ADMIN_BOT_TOKEN not configured)")
     
     async def notify_new_items(
         self, 
@@ -79,7 +106,7 @@ class TelegramNotifier:
     
     async def send_admin_message(self, text: str, parse_mode: str = "Markdown") -> bool:
         """
-        Send a message to the admin chat.
+        Send a message to the admin chat using the admin bot.
         
         Args:
             text: Message text
@@ -93,8 +120,8 @@ class TelegramNotifier:
             return False
         
         try:
-            self._send_message(self.admin_chat_id, text, parse_mode=parse_mode)
-            logger.info("Sent admin notification")
+            self._send_admin_message(self.admin_chat_id, text, parse_mode=parse_mode)
+            logger.info("Sent admin notification via admin bot")
             return True
         except Exception as e:
             logger.error(f"Failed to send admin message: {e}")
@@ -176,13 +203,13 @@ class TelegramNotifier:
         return text
     
     def _send_message(
-        self, 
-        chat_id: str, 
-        text: str, 
+        self,
+        chat_id: str,
+        text: str,
         parse_mode: str = None
     ) -> dict:
         """
-        Send a message via Telegram API.
+        Send a message via Telegram API using the main bot.
         
         Args:
             chat_id: Telegram chat ID
@@ -208,6 +235,43 @@ class TelegramNotifier:
         
         if not response.ok:
             logger.error(f"Telegram API error: {response.text}")
+            response.raise_for_status()
+        
+        return response.json()
+    
+    def _send_admin_message(
+        self,
+        chat_id: str,
+        text: str,
+        parse_mode: str = None
+    ) -> dict:
+        """
+        Send a message via Telegram API using the admin bot.
+        
+        Args:
+            chat_id: Telegram chat ID
+            text: Message text
+            parse_mode: Parse mode (Markdown, HTML, etc.)
+            
+        Returns:
+            API response
+        """
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+        }
+        
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        
+        response = self.session.post(
+            f"{self.admin_api_base}/sendMessage",
+            json=payload,
+            timeout=30,
+        )
+        
+        if not response.ok:
+            logger.error(f"Admin Telegram API error: {response.text}")
             response.raise_for_status()
         
         return response.json()

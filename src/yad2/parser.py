@@ -98,6 +98,21 @@ def extract_datetime_from_image_url(image_url: str) -> Optional[datetime]:
 
 
 @dataclass
+class SearchResult:
+    """Result of a Yad2 search including items and metadata."""
+    
+    items: List["Yad2Item"]
+    total_results: Optional[int] = None  # Total items in search (from API)
+    current_page: int = 1
+    
+    def __len__(self) -> int:
+        return len(self.items)
+    
+    def __iter__(self):
+        return iter(self.items)
+
+
+@dataclass
 class Yad2Item:
     """Represents a single Yad2 listing item."""
     
@@ -322,6 +337,20 @@ class Yad2Parser:
         Returns:
             List of Yad2Item objects
         """
+        result = self.get_search_result(search_url, retry_count)
+        return result.items
+    
+    def get_search_result(self, search_url: str, retry_count: int = 0) -> SearchResult:
+        """
+        Fetch items and metadata from a Yad2 search URL with retry on blocking.
+        
+        Args:
+            search_url: The Yad2 search URL
+            retry_count: Current retry attempt (internal use)
+            
+        Returns:
+            SearchResult with items and total_results count
+        """
         logger.info(f"Fetching items from: {search_url}" + (f" (retry {retry_count})" if retry_count > 0 else ""))
         
         try:
@@ -347,12 +376,12 @@ class Yad2Parser:
                         self.stats["search_requests_retried"] += 1
                     
                     # Retry the request
-                    return self.get_items(search_url, retry_count + 1)
+                    return self.get_search_result(search_url, retry_count + 1)
                 else:
                     logger.error(f"Max retries ({self.max_retries}) exceeded, giving up")
                     if self.track_stats:
                         self.stats["search_requests_blocked"] += 1
-                    return []
+                    return SearchResult(items=[])
             
             # Extract __NEXT_DATA__
             next_data = self._extract_next_data(response.text)
@@ -360,27 +389,27 @@ class Yad2Parser:
                 logger.error("Could not find __NEXT_DATA__ in page")
                 if self.track_stats:
                     self.stats["search_requests_failed"] += 1
-                return []
+                return SearchResult(items=[])
             
-            # Parse items from the data
-            items = self._parse_items(next_data)
+            # Parse items and metadata from the data
+            items, total_results = self._parse_items_with_metadata(next_data)
             
             if self.track_stats:
                 self.stats["search_requests_success"] += 1
             
-            logger.info(f"Found {len(items)} items")
-            return items
+            logger.info(f"Found {len(items)} items (total in search: {total_results})")
+            return SearchResult(items=items, total_results=total_results)
             
         except requests.RequestException as e:
             logger.error(f"Request failed: {e}")
             if self.track_stats:
                 self.stats["search_requests_failed"] += 1
-            return []
+            return SearchResult(items=[])
         except Exception as e:
             logger.error(f"Error fetching items: {e}")
             if self.track_stats:
                 self.stats["search_requests_failed"] += 1
-            return []
+            return SearchResult(items=[])
     
     def get_items_paginated(self, search_url: str, max_pages: int = 3) -> List[Yad2Item]:
         """
@@ -472,7 +501,18 @@ class Yad2Parser:
     
     def _parse_items(self, next_data: dict) -> List[Yad2Item]:
         """Parse items from __NEXT_DATA__ structure."""
+        items, _ = self._parse_items_with_metadata(next_data)
+        return items
+    
+    def _parse_items_with_metadata(self, next_data: dict) -> tuple[List[Yad2Item], Optional[int]]:
+        """
+        Parse items and metadata from __NEXT_DATA__ structure.
+        
+        Returns:
+            Tuple of (items list, total_results count or None)
+        """
         items: List[Yad2Item] = []
+        total_results: Optional[int] = None
         
         try:
             # Navigate to the feed data
@@ -483,7 +523,7 @@ class Yad2Parser:
             
             if not queries:
                 logger.warning("No queries found in dehydratedState")
-                return items
+                return items, total_results
             
             # Find the feed query (first query usually contains the feed)
             for query in queries:
@@ -493,6 +533,25 @@ class Yad2Parser:
                 if query_key and query_key[0] == "feed":
                     state = query.get("state", {})
                     data = state.get("data", {})
+                    
+                    # Extract total results from pagination metadata
+                    # Yad2 includes this in the feed data under pagination.total
+                    pagination = data.get("pagination", {})
+                    total_results = pagination.get("total")
+                    
+                    # Alternative locations for total count
+                    if total_results is None:
+                        total_results = pagination.get("totalResults")
+                    if total_results is None:
+                        total_results = data.get("totalResults")
+                    if total_results is None:
+                        total_results = data.get("total")
+                    if total_results is None:
+                        # Try to get from meta
+                        meta = data.get("meta", {})
+                        total_results = meta.get("totalResults") or meta.get("total")
+                    
+                    logger.debug(f"Extracted total_results: {total_results}")
                     
                     # Extract items from all categories
                     categories = ["platinum", "boost", "solo", "commercial", "private"]
@@ -515,11 +574,11 @@ class Yad2Parser:
                     seen_ids.add(item.id)
                     unique_items.append(item)
             
-            return unique_items
+            return unique_items, total_results
             
         except Exception as e:
             logger.error(f"Error parsing items: {e}")
-            return items
+            return items, total_results
     
     def get_item_created_at(self, item_id: str) -> Optional[datetime]:
         """
