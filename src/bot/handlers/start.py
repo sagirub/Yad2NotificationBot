@@ -15,11 +15,16 @@ async def cmd_start(message: types.Message):
     """Handles the /start command."""
     await show_main_menu(message, "ברוכים הבאים! 🤖 השתמשו בכפתורים למטה לניהול החיפושים שלכם.")
 
+@router.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    """Handles the /menu command - quick access to main menu."""
+    await show_main_menu(message, "📋 תפריט ראשי:")
+
 @router.callback_query(F.data == "start_menu")
 async def cb_start_menu(callback: types.CallbackQuery):
     """Handles the 'Back to menu' button."""
     await callback.answer()
-    await show_main_menu(callback.message, "ברוכים הבאים! 🤖 השתמשו בכפתורים למטה לניהול החיפושים שלכם.")
+    await show_main_menu(callback.message, "📋 תפריט ראשי:")
 
 @router.message(Command("cancel"))
 @router.callback_query(F.data == "cancel")

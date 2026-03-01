@@ -79,9 +79,10 @@ searchOrchestrator:
 ```
 
 ### Key Settings:
-- **Batch Size**: 3 searches per worker Lambda (configurable via `SCANNER_BATCH_SIZE`)
-- **Max Pages Initial**: 3 pages for first scan
+- **Max Requests Per Worker**: 5 estimated HTTP requests per worker Lambda (configurable via `MAX_REQUESTS_PER_WORKER`)
+- **Max Pages Initial**: 3 pages for first scan (large searches)
 - **Max Pages Regular**: 1 page for subsequent scans
+- **Max Safe Pages**: 5 (small searches needing more are reclassified as large)
 - **Scan Hours**: 6 AM - midnight Israel time
 
 ## Step 3: Monitor the Test
@@ -157,8 +158,8 @@ With 100 searches running every 30 minutes for 24 hours:
 - **Total Runs**: ~48 runs (24 hours × 2 runs/hour, minus off-hours)
 - **Searches per Run**: 100
 - **Total Scans**: ~4,800 search scans
-- **Batches per Run**: ~34 (100 searches ÷ 3 per batch)
-- **Lambda Invocations**: ~1,680 (48 runs × 35 invocations per run)
+- **Batches per Run**: Varies based on request budget (regular scans: ~20 batches of 5 searches each)
+- **Lambda Invocations**: ~1,000 (48 runs × ~21 invocations per run)
 
 ## Step 5: Cleanup
 
@@ -238,6 +239,6 @@ python scripts/populate_test_searches.py --count 500 --users 50
 ```
 
 Consider adjusting:
-- `SCANNER_BATCH_SIZE`: Increase to reduce Lambda invocations
+- `MAX_REQUESTS_PER_WORKER`: Increase to pack more searches per worker (reduces Lambda invocations but increases bot detection risk)
 - Worker `timeout`: Increase for larger batches
 - Orchestrator `timeout`: Increase to wait for more workers

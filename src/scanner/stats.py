@@ -11,12 +11,9 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from src.bot.db.dynamodb import save_scan_stats, get_stats_summary, get_latest_stats
+from src.config import LAMBDA_FREE_TIER_INVOCATIONS, LAMBDA_FREE_TIER_GB_SECONDS
 
 logger = logging.getLogger(__name__)
-
-# AWS Lambda Free Tier Limits (per month)
-LAMBDA_FREE_TIER_INVOCATIONS = 1_000_000  # 1 million requests
-LAMBDA_FREE_TIER_GB_SECONDS = 400_000  # 400,000 GB-seconds
 
 
 @dataclass

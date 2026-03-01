@@ -127,13 +127,14 @@ class Yad2Item:
     model: Optional[str] = None
     year: Optional[int] = None
     hand: Optional[str] = None
-    ad_type: str = "private"  # commercial, private, platinum, etc.
+    ad_type: str = "private"  # adType field from Yad2 (commercial = dealer, private = individual)
+    feed_source: str = "private"  # Which feed section the item came from (platinum, boost, solo, commercial, private)
     created_at: Optional[datetime] = None  # Extracted from image URL or item detail page
     created_at_source: str = "unknown"  # "image_url", "api", or "unknown"
     raw_data: Dict[str, Any] = field(default_factory=dict)
     
     @classmethod
-    def from_next_data(cls, item_data: dict) -> Optional["Yad2Item"]:
+    def from_next_data(cls, item_data: dict, feed_source: str = "private") -> Optional["Yad2Item"]:
         """
         Create a Yad2Item from __NEXT_DATA__ item.
         
@@ -141,6 +142,7 @@ class Yad2Item:
         
         Args:
             item_data: Raw item data from __NEXT_DATA__
+            feed_source: Which feed section this item came from (platinum, boost, solo, commercial, private)
             
         Returns:
             Yad2Item instance or None if data is invalid
@@ -217,6 +219,7 @@ class Yad2Item:
                 year=year,
                 hand=hand,
                 ad_type=ad_type,
+                feed_source=feed_source,
                 created_at=created_at,
                 created_at_source=created_at_source,
                 raw_data=item_data,
@@ -291,6 +294,24 @@ class Yad2Parser:
         self.session.headers.update(BROWSER_HEADERS)
         self.track_stats = track_stats
         self.reset_stats()
+    
+    def reset_session(self):
+        """
+        Create a fresh HTTP session, discarding any cookies/state from the old one.
+        
+        This is useful when the current session has been flagged/blocked by
+        Yad2's bot protection — subsequent requests on a blocked session will
+        keep failing even if the IP isn't actually blocked.
+        """
+        old_session = self.session
+        try:
+            old_session.close()
+        except Exception:
+            pass
+        self.session = requests.Session()
+        self.session.headers.update(BROWSER_HEADERS)
+        self.last_request_time = 0
+        logger.info("HTTP session reset (cleared cookies/state)")
     
     def _wait_for_rate_limit(self):
         """Wait if needed to respect rate limiting."""
@@ -560,7 +581,7 @@ class Yad2Parser:
                         category_items = data.get(category, [])
                         if isinstance(category_items, list):
                             for raw_item in category_items:
-                                item = Yad2Item.from_next_data(raw_item)
+                                item = Yad2Item.from_next_data(raw_item, feed_source=category)
                                 if item:
                                     items.append(item)
                     

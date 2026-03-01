@@ -2,6 +2,9 @@ service: yad2-notification-bot
 
 frameworkVersion: "3"
 
+# Automatically load variables from .env file
+useDotenv: true
+
 provider:
   name: aws
   runtime: python3.11
@@ -24,8 +27,9 @@ provider:
     ADMIN_BOT_TOKEN: ${env:ADMIN_BOT_TOKEN, ''}
     # Scanner settings
     STATS_RETENTION_DAYS: "7"
-    # Orchestrator settings
-    SCANNER_BATCH_SIZE: "3"
+    # Orchestrator settings - budget-based batching
+    # Max estimated HTTP requests per worker Lambda (to avoid Yad2 bot protection)
+    MAX_REQUESTS_PER_WORKER: "5"
     WORKER_FUNCTION_NAME: ${self:service}-${self:provider.stage}-searchWorker
 
   iam:
@@ -100,18 +104,6 @@ functions:
     memorySize: 512
     timeout: 300
     # No events - invoked by orchestrator
-
-  # Legacy search scanner - kept for backward compatibility
-  # Can be disabled once orchestrator is verified working
-  searchScanner:
-    handler: src.scanner.lambda_handler.handler
-    memorySize: 512
-    timeout: 300
-    events:
-      - schedule:
-          rate: rate(30 minutes)
-          enabled: false
-          description: "Legacy scanner - disabled in favor of orchestrator"
 
 plugins:
   - serverless-python-requirements

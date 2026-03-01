@@ -63,3 +63,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# AWS Lambda Free Tier Limits (per month)
+LAMBDA_FREE_TIER_INVOCATIONS = 1_000_000  # 1 million requests
+LAMBDA_FREE_TIER_GB_SECONDS = 400_000  # 400,000 GB-seconds

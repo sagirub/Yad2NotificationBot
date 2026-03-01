@@ -14,6 +14,8 @@ router = APIRouter()
 
 # Global dispatcher - reused across warm Lambda invocations
 _dp = None
+# Track if bot commands have been set (once per cold start)
+_commands_set = False
 
 
 def get_dispatcher():
@@ -35,6 +37,25 @@ def get_dispatcher():
         _dp.include_router(main_router)
     
     return _dp
+
+
+async def ensure_bot_commands(bot: Bot):
+    """Set bot commands menu (once per cold start)."""
+    global _commands_set
+    if _commands_set:
+        return
+    
+    try:
+        commands = [
+            types.BotCommand(command="start", description="🏠 התחלה"),
+            types.BotCommand(command="menu", description="📋 תפריט ראשי"),
+            types.BotCommand(command="cancel", description="❌ ביטול פעולה"),
+        ]
+        await bot.set_my_commands(commands)
+        _commands_set = True
+        logging.info("Bot commands menu set successfully")
+    except Exception as e:
+        logging.error(f"Failed to set bot commands: {e}")
 
 
 @router.post("/webhook")
@@ -59,6 +80,9 @@ async def telegram_webhook(request: Request):
         
         # Validate and convert it to an aiogram Update object
         update = types.Update.model_validate(update_data, context={"bot": bot})
+        
+        # Ensure bot commands menu is set (once per cold start)
+        await ensure_bot_commands(bot)
         
         # Feed it to the dispatcher to be processed by your handlers
         await dp.feed_update(bot, update)

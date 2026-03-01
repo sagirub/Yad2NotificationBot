@@ -92,10 +92,20 @@ class TelegramNotifier:
             
             self._send_message(chat_id, header, parse_mode="Markdown")
             
-            # Send each item
-            for item in items:
+            # Send each item (last item gets a menu button)
+            for i, item in enumerate(items):
                 item_message = self._format_item_message(item)
-                self._send_message(chat_id, item_message, parse_mode="Markdown")
+                is_last = (i == len(items) - 1)
+                if is_last:
+                    # Add menu button to the last item message
+                    menu_keyboard = {
+                        "inline_keyboard": [[
+                            {"text": "📋 תפריט", "callback_data": "start_menu"}
+                        ]]
+                    }
+                    self._send_message(chat_id, item_message, parse_mode="Markdown", reply_markup=menu_keyboard)
+                else:
+                    self._send_message(chat_id, item_message, parse_mode="Markdown")
             
             logger.info(f"Sent notification for {len(items)} items to chat {chat_id}")
             return True
@@ -206,7 +216,8 @@ class TelegramNotifier:
         self,
         chat_id: str,
         text: str,
-        parse_mode: str = None
+        parse_mode: str = None,
+        reply_markup: dict = None,
     ) -> dict:
         """
         Send a message via Telegram API using the main bot.
@@ -215,6 +226,7 @@ class TelegramNotifier:
             chat_id: Telegram chat ID
             text: Message text
             parse_mode: Parse mode (Markdown, HTML, etc.)
+            reply_markup: Optional inline keyboard markup dict
             
         Returns:
             API response
@@ -226,6 +238,9 @@ class TelegramNotifier:
         
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         
         response = self.session.post(
             f"{self.api_base}/sendMessage",

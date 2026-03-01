@@ -50,6 +50,11 @@ class ItemScanner:
     - API fallback: Use spare requests when image URL has no timestamp
     """
     
+    # Maximum pages we can safely fetch in sequence without triggering bot protection
+    # If a "small" search needs more pages than this, we reclassify it as "large"
+    # so it uses hybrid detection (createdAt verification) instead of ID-bank-only
+    MAX_SAFE_PAGES = 5
+    
     def __init__(
         self,
         notifier: Optional[TelegramNotifier] = None,
@@ -213,19 +218,32 @@ class ItemScanner:
         # Determine max pages based on scan type and search size
         if is_initial_scan:
             if is_small_search and total_results is not None:
-                # Small search initial scan: fetch ALL pages to build complete ID bank
+                # Small search initial scan: fetch pages to build ID bank
                 # Calculate pages needed: ceil(total_results / items_per_page)
-                max_pages = (total_results + self.items_per_page - 1) // self.items_per_page
+                pages_needed = (total_results + self.items_per_page - 1) // self.items_per_page
                 # Add 1 extra page as buffer (in case new items were added)
-                max_pages = max(max_pages + 1, 2)
-                logger.info(
-                    f"Small search '{search_name}' initial scan: fetching {max_pages} pages "
-                    f"to build complete ID bank (total_results={total_results})"
-                )
+                pages_needed = max(pages_needed + 1, 2)
+                
+                if pages_needed > self.MAX_SAFE_PAGES:
+                    # Too many pages to safely fetch — reclassify as "large" search
+                    # Large searches use hybrid detection (createdAt verification)
+                    # which only needs a few pages and won't trigger bot protection
+                    logger.info(
+                        f"Search '{search_name}' needs {pages_needed} pages but max safe is "
+                        f"{self.MAX_SAFE_PAGES} — reclassifying as large search "
+                        f"(will use hybrid detection with createdAt verification)"
+                    )
+                    is_small_search = False
+                    max_pages = self.max_pages_initial
+                else:
+                    max_pages = pages_needed
+                    logger.info(
+                        f"Small search '{search_name}' initial scan: fetching {max_pages} pages "
+                        f"to build complete ID bank (total_results={total_results})"
+                    )
             elif is_small_search:
                 # Small search but no total_results - use a reasonable default
-                # Estimate: threshold / items_per_page + buffer
-                max_pages = (self.small_search_threshold // self.items_per_page) + 2
+                max_pages = min(self.MAX_SAFE_PAGES, (self.small_search_threshold // self.items_per_page) + 2)
                 logger.info(
                     f"Small search '{search_name}' initial scan: fetching up to {max_pages} pages "
                     f"(no total_results available)"
@@ -301,6 +319,13 @@ class ItemScanner:
         if blocked_count > 0:
             for _ in range(blocked_count):
                 self.stats.add_request_blocked(search_name)
+            # Reset the HTTP session to prevent a blocked session from
+            # poisoning all subsequent searches in this batch
+            logger.warning(
+                f"Search '{search_name}' was blocked {blocked_count} times, "
+                f"resetting HTTP session for next search"
+            )
+            self.parser.reset_session()
         
         self.parser.reset_stats()
         
@@ -308,14 +333,24 @@ class ItemScanner:
             logger.warning(f"No items fetched for search '{search_name}'")
             return result
         
-        # Filter out commercial items if requested
+        # Collect ALL item IDs before filtering (for the ID bank)
+        # The ID bank must track all items regardless of commercial filter,
+        # otherwise filtered-out items would be re-detected as "new" every scan
+        all_fetched_item_ids = {item.id for item in items}
+        
+        # Filter out commercial items if requested (only affects notifications)
+        # Uses feed_source (which section the item appears in) rather than ad_type,
+        # because ad_type="commercial" just means the seller is a dealer, while
+        # feed_source="commercial" means it's a promoted dealer listing section.
+        # Items in the "private" feed section can still be from dealers (ad_type=commercial)
+        # but they appear as regular listings on the website.
         if exclude_commercial:
             original_count = len(items)
-            items = [item for item in items if item.ad_type not in ("commercial",)]
+            items = [item for item in items if item.feed_source not in ("commercial",)]
             filtered_count = original_count - len(items)
             if filtered_count > 0:
                 logger.info(
-                    f"Search '{search_name}': filtered out {filtered_count} commercial items "
+                    f"Search '{search_name}': filtered out {filtered_count} commercial-section items "
                     f"({original_count} -> {len(items)})"
                 )
         
@@ -422,8 +457,9 @@ class ItemScanner:
                 self.stats.add_error(f"Notification failed: {str(e)}")
         
         # Update last scan results in DynamoDB
-        # Merge current items with previous items (keep track of all seen items)
-        all_item_ids = list(last_item_ids.union(current_item_ids))
+        # Merge ALL fetched items (including commercial) with previous items
+        # This ensures the ID bank tracks everything, preventing re-detection
+        all_item_ids = list(last_item_ids.union(all_fetched_item_ids))
         
         # Limit stored item IDs to prevent unbounded growth
         if len(all_item_ids) > self.max_stored_ids:

@@ -121,7 +121,8 @@ async def handle_commercial_filter(callback: types.CallbackQuery, state: FSMCont
     filter_text = "כן, רק פרטיים" if exclude_commercial else "לא, הכל"
     await callback.message.edit_text(
         f"✅ סינון סוחרים: {filter_text}\n\n"
-        "איך תרצו לקרוא לחיפוש הזה?\n"
+        "📝 תנו שם לחיפוש הזה כדי שתוכלו לזהות אותו בקלות.\n"
+        "לדוגמה: \"מאזדה 3 ת״א\" או \"דירה 3 חדרים רמת גן\"\n\n"
         "שלחו /cancel לביטול."
     )
     await state.set_state(AddSearch.waiting_for_name)
@@ -164,14 +165,14 @@ async def handle_name(message: types.Message, state: FSMContext):
     await state.clear()
     
     # Build response message
-    size_info = ""
+    items_info = ""
     if total_items is not None:
-        size_type = "קטן" if is_small_search else "גדול"
-        size_info = f"\n📊 גודל חיפוש: {total_items} פריטים (חיפוש {size_type})"
+        items_info = f"\n📊 נמצאו {total_items} מודעות בחיפוש"
     
     filter_info = "\n🚫 סינון סוחרים: פעיל" if exclude_commercial else ""
     
     await processing_msg.edit_text(
-        f"✅ נוסף חיפוש חדש: {name}{size_info}{filter_info}",
+        f"✅ נוסף חיפוש חדש: {name}{items_info}{filter_info}\n\n"
+        "🔔 תקבלו התראה כשיעלו מודעות חדשות!",
         reply_markup=main_menu_keyboard()
     )

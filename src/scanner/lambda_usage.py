@@ -15,11 +15,9 @@ import calendar
 import boto3
 from botocore.exceptions import ClientError
 
-logger = logging.getLogger(__name__)
+from src.config import LAMBDA_FREE_TIER_INVOCATIONS, LAMBDA_FREE_TIER_GB_SECONDS
 
-# AWS Lambda Free Tier Limits (per month)
-LAMBDA_FREE_TIER_INVOCATIONS = 1_000_000  # 1 million requests
-LAMBDA_FREE_TIER_GB_SECONDS = 400_000  # 400,000 GB-seconds
+logger = logging.getLogger(__name__)
 
 
 def get_lambda_usage(function_name: str = None, region: str = None) -> Dict[str, Any]:
