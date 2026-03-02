@@ -165,6 +165,8 @@ class TelegramNotifier:
         """
         Format a single item as a Telegram message.
         
+        Adapts formatting based on item category (vehicles vs real estate).
+        
         Args:
             item: Yad2Item to format
             
@@ -184,6 +186,10 @@ class TelegramNotifier:
         # Location
         if item.location:
             lines.append(f"📍 {self._escape_markdown(item.location)}")
+        
+        # Category-specific details
+        if item.floor is not None:
+            lines.append(f"🏢 קומה {item.floor}")
         
         # Hand (for vehicles)
         if item.hand:

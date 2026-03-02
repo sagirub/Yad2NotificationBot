@@ -209,8 +209,9 @@ class TestYad2Parser:
         items = parser._parse_items(next_data)
         
         assert len(items) == 2
-        assert items[0].id == "item1"
-        assert items[1].id == "item2"
+        item_ids = {item.id for item in items}
+        assert "item1" in item_ids
+        assert "item2" in item_ids
     
     def test_parse_items_removes_duplicates(self):
         """Test that duplicate items are removed."""

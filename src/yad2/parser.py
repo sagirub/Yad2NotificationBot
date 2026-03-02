@@ -114,7 +114,7 @@ class SearchResult:
 
 @dataclass
 class Yad2Item:
-    """Represents a single Yad2 listing item."""
+    """Represents a single Yad2 listing item (vehicles, real estate, etc.)."""
     
     id: str  # token - unique identifier
     order_id: int  # orderId - for ordering
@@ -123,12 +123,22 @@ class Yad2Item:
     link: str
     image_url: Optional[str] = None
     location: Optional[str] = None
+    # Vehicle-specific fields
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     year: Optional[int] = None
     hand: Optional[str] = None
+    # Real estate-specific fields
+    property_type: Optional[str] = None  # e.g., "דירה", "גג/ פנטהאוז"
+    rooms: Optional[float] = None  # e.g., 3, 3.5, 5.5
+    square_meters: Optional[int] = None
+    floor: Optional[int] = None
+    street: Optional[str] = None
+    neighborhood: Optional[str] = None
+    # Common fields
     ad_type: str = "private"  # adType field from Yad2 (commercial = dealer, private = individual)
-    feed_source: str = "private"  # Which feed section the item came from (platinum, boost, solo, commercial, private)
+    feed_source: str = "private"  # Which feed section the item came from
+    category_id: Optional[int] = None  # 1=vehicles, 2=realestate, etc.
     created_at: Optional[datetime] = None  # Extracted from image URL or item detail page
     created_at_source: str = "unknown"  # "image_url", "api", or "unknown"
     raw_data: Dict[str, Any] = field(default_factory=dict)
@@ -138,11 +148,12 @@ class Yad2Item:
         """
         Create a Yad2Item from __NEXT_DATA__ item.
         
-        Attempts to extract created_at from image URL to avoid extra API calls.
+        Supports both vehicle and real estate listings by detecting the category
+        from the item data and extracting the appropriate fields.
         
         Args:
             item_data: Raw item data from __NEXT_DATA__
-            feed_source: Which feed section this item came from (platinum, boost, solo, commercial, private)
+            feed_source: Which feed section this item came from
             
         Returns:
             Yad2Item instance or None if data is invalid
@@ -153,20 +164,7 @@ class Yad2Item:
                 return None
             
             order_id = item_data.get("orderId", 0)
-            
-            # Build title from manufacturer, model, year
-            manufacturer = item_data.get("manufacturer", {})
-            model = item_data.get("model", {})
-            sub_model = item_data.get("subModel", {})
-            vehicle_dates = item_data.get("vehicleDates", {})
-            
-            manufacturer_text = manufacturer.get("text", "")
-            model_text = model.get("text", "")
-            year = vehicle_dates.get("yearOfProduction")
-            
-            # Build title
-            title_parts = [p for p in [manufacturer_text, model_text, str(year) if year else None] if p]
-            title = " ".join(title_parts) if title_parts else "ללא כותרת"
+            category_id = item_data.get("categoryId")
             
             # Get price
             price = item_data.get("price")
@@ -180,50 +178,118 @@ class Yad2Item:
             created_at = None
             created_at_source = "unknown"
             
-            # First try cover image
             if image_url:
                 created_at = extract_datetime_from_image_url(image_url)
                 if created_at:
                     created_at_source = "image_url"
             
-            # If cover image failed, try first image in the list
             if not created_at and images:
-                for img_url in images[:3]:  # Try first 3 images
+                for img_url in images[:3]:
                     created_at = extract_datetime_from_image_url(img_url)
                     if created_at:
                         created_at_source = "image_url"
                         break
             
-            # Get location
-            address = item_data.get("address", {})
-            area = address.get("area", {})
-            location = area.get("text")
-            
-            # Get hand
-            hand_data = item_data.get("hand", {})
-            hand = hand_data.get("text")
-            
             # Get ad type
             ad_type = item_data.get("adType", "private")
             
-            return cls(
-                id=token,
-                order_id=order_id,
-                title=title,
-                price=price,
-                link=f"{ITEM_BASE_URL}{token}",
-                image_url=image_url,
-                location=location,
-                manufacturer=manufacturer_text,
-                model=model_text,
-                year=year,
-                hand=hand,
-                ad_type=ad_type,
-                feed_source=feed_source,
-                created_at=created_at,
-                created_at_source=created_at_source,
-                raw_data=item_data,
-            )
+            # Extract address fields (common structure for all categories)
+            address = item_data.get("address", {})
+            area = address.get("area", {})
+            city = address.get("city", {})
+            neighborhood_data = address.get("neighborhood", {})
+            street_data = address.get("street", {})
+            house_data = address.get("house", {})
+            
+            # Detect category and extract appropriate fields
+            additional_details = item_data.get("additionalDetails", {})
+            is_realestate = category_id == 2 or "roomsCount" in additional_details or "property" in additional_details
+            
+            if is_realestate:
+                # Real estate item
+                property_type = additional_details.get("property", {}).get("text")
+                rooms = additional_details.get("roomsCount")
+                square_meters = additional_details.get("squareMeter") or metadata.get("squareMeterBuild")
+                floor = house_data.get("floor")
+                street_text = street_data.get("text")
+                neighborhood_text = neighborhood_data.get("text")
+                city_text = city.get("text", "")
+                
+                # Build title: "property_type rooms חד' · street, city"
+                title_parts = []
+                if property_type:
+                    title_parts.append(property_type)
+                if rooms is not None:
+                    title_parts.append(f"{rooms} חד'")
+                if square_meters:
+                    title_parts.append(f"{square_meters} מ\"ר")
+                title = " · ".join(title_parts) if title_parts else "ללא כותרת"
+                
+                # Build location: "street, neighborhood, city"
+                location_parts = [p for p in [street_text, neighborhood_text, city_text] if p]
+                location = ", ".join(location_parts) if location_parts else area.get("text")
+                
+                return cls(
+                    id=token,
+                    order_id=order_id,
+                    title=title,
+                    price=price,
+                    link=f"{ITEM_BASE_URL}{token}",
+                    image_url=image_url,
+                    location=location,
+                    property_type=property_type,
+                    rooms=rooms,
+                    square_meters=square_meters,
+                    floor=floor,
+                    street=street_text,
+                    neighborhood=neighborhood_text,
+                    ad_type=ad_type,
+                    feed_source=feed_source,
+                    category_id=category_id,
+                    created_at=created_at,
+                    created_at_source=created_at_source,
+                    raw_data=item_data,
+                )
+            else:
+                # Vehicle item (or unknown category — use vehicle parsing as default)
+                manufacturer = item_data.get("manufacturer", {})
+                model = item_data.get("model", {})
+                vehicle_dates = item_data.get("vehicleDates", {})
+                
+                manufacturer_text = manufacturer.get("text", "")
+                model_text = model.get("text", "")
+                year = vehicle_dates.get("yearOfProduction")
+                
+                # Build title from manufacturer, model, year
+                title_parts = [p for p in [manufacturer_text, model_text, str(year) if year else None] if p]
+                title = " ".join(title_parts) if title_parts else "ללא כותרת"
+                
+                # Location from area
+                location = area.get("text")
+                
+                # Get hand (ownership count)
+                hand_data = item_data.get("hand", {})
+                hand = hand_data.get("text")
+                
+                return cls(
+                    id=token,
+                    order_id=order_id,
+                    title=title,
+                    price=price,
+                    link=f"{ITEM_BASE_URL}{token}",
+                    image_url=image_url,
+                    location=location,
+                    manufacturer=manufacturer_text,
+                    model=model_text,
+                    year=year,
+                    hand=hand,
+                    ad_type=ad_type,
+                    feed_source=feed_source,
+                    category_id=category_id,
+                    created_at=created_at,
+                    created_at_source=created_at_source,
+                    raw_data=item_data,
+                )
         except Exception as e:
             logger.warning(f"Failed to parse item data: {e}")
             return None
@@ -525,9 +591,28 @@ class Yad2Parser:
         items, _ = self._parse_items_with_metadata(next_data)
         return items
     
+    # Feed categories by Yad2 section type
+    # Vehicles: platinum, boost, solo, commercial, private
+    # Real estate: private, agency, yad1, platinum, kingOfTheHar, trio, booster, leadingBroker
+    # We extract from all known categories to support any Yad2 section
+    FEED_CATEGORIES = [
+        # Common
+        "platinum", "private",
+        # Vehicles
+        "boost", "solo", "commercial",
+        # Real estate
+        "agency", "yad1", "kingOfTheHar", "trio", "booster", "leadingBroker",
+    ]
+    
+    # Categories that represent commercial/agency listings (for feed_source filtering)
+    COMMERCIAL_FEED_SOURCES = {"commercial", "agency", "leadingBroker"}
+    
     def _parse_items_with_metadata(self, next_data: dict) -> tuple[List[Yad2Item], Optional[int]]:
         """
         Parse items and metadata from __NEXT_DATA__ structure.
+        
+        Supports both vehicle feeds (queryKey: ["feed", ...]) and
+        real estate feeds (queryKey: ["realestate-rent-feed", ...], etc.).
         
         Returns:
             Tuple of (items list, total_results count or None)
@@ -546,46 +631,72 @@ class Yad2Parser:
                 logger.warning("No queries found in dehydratedState")
                 return items, total_results
             
-            # Find the feed query (first query usually contains the feed)
+            # Find the feed query
+            # Vehicles use queryKey[0] == "feed"
+            # Real estate uses queryKey[0] containing "feed" (e.g., "realestate-rent-feed")
+            # Also match "feed-literal" as a fallback
             for query in queries:
                 query_key = query.get("queryKey", [])
                 
-                # Look for feed query
-                if query_key and query_key[0] == "feed":
-                    state = query.get("state", {})
-                    data = state.get("data", {})
-                    
-                    # Extract total results from pagination metadata
-                    # Yad2 includes this in the feed data under pagination.total
-                    pagination = data.get("pagination", {})
+                if not query_key:
+                    continue
+                
+                # Match any query key that contains "feed" in the first element
+                first_key = str(query_key[0]) if query_key else ""
+                is_feed_query = "feed" in first_key.lower()
+                
+                if not is_feed_query:
+                    continue
+                
+                state = query.get("state", {})
+                data = state.get("data", {})
+                
+                if not isinstance(data, dict):
+                    continue
+                
+                # Check if this query has item data (has at least one known category)
+                has_items = any(
+                    isinstance(data.get(cat), list) and len(data.get(cat, [])) > 0
+                    for cat in self.FEED_CATEGORIES
+                )
+                
+                if not has_items:
+                    continue
+                
+                logger.info(f"Found feed query: {query_key}, data keys: {list(data.keys())}")
+                
+                # Extract total results from pagination metadata
+                pagination = data.get("pagination", {})
+                if isinstance(pagination, dict):
                     total_results = pagination.get("total")
-                    
-                    # Alternative locations for total count
                     if total_results is None:
                         total_results = pagination.get("totalResults")
-                    if total_results is None:
-                        total_results = data.get("totalResults")
-                    if total_results is None:
-                        total_results = data.get("total")
-                    if total_results is None:
-                        # Try to get from meta
-                        meta = data.get("meta", {})
+                
+                # Alternative locations for total count
+                if total_results is None:
+                    total_results = data.get("totalResults")
+                if total_results is None:
+                    total_results = data.get("total")
+                if total_results is None:
+                    meta = data.get("meta", {})
+                    if isinstance(meta, dict):
                         total_results = meta.get("totalResults") or meta.get("total")
-                    
-                    logger.debug(f"Extracted total_results: {total_results}")
-                    
-                    # Extract items from all categories
-                    categories = ["platinum", "boost", "solo", "commercial", "private"]
-                    
-                    for category in categories:
-                        category_items = data.get(category, [])
-                        if isinstance(category_items, list):
-                            for raw_item in category_items:
-                                item = Yad2Item.from_next_data(raw_item, feed_source=category)
-                                if item:
-                                    items.append(item)
-                    
-                    break  # Found the feed query, no need to continue
+                
+                logger.debug(f"Extracted total_results: {total_results}")
+                
+                # Extract items from all known categories
+                for category in self.FEED_CATEGORIES:
+                    category_items = data.get(category, [])
+                    if isinstance(category_items, list):
+                        for raw_item in category_items:
+                            # Map agency/leadingBroker to "commercial" feed_source
+                            # for consistent filtering across categories
+                            feed_source = "commercial" if category in self.COMMERCIAL_FEED_SOURCES else category
+                            item = Yad2Item.from_next_data(raw_item, feed_source=feed_source)
+                            if item:
+                                items.append(item)
+                
+                break  # Found the feed query, no need to continue
             
             # Remove duplicates (items can appear in multiple categories)
             seen_ids = set()
