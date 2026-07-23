@@ -1,0 +1,30 @@
+{
+  "searches": [
+    {
+      "id": "d2ffcb49-8a50-43a4-ad55-751d68af2bbb",
+      "search_id": "d2ffcb49-8a50-43a4-ad55-751d68af2bbb",
+      "user_id": "296195394",
+      "name": "japanese_above_2012",
+      "link": "https://www.yad2.co.il/vehicles/cars?manufacturer=17,19,27,36&model=10188,10247,10331,10497,10246&year=2012--1&price=10000-30000&km=10000-150000&gearBox=102",
+      "is_initial_scan_complete": true,
+      "is_small_search": true,
+      "total_items": 18,
+      "exclude_commercial": true,
+      "last_item_ids": ["lc4hikob","hzmzk7q1","7tpkaukq"]
+    },
+    {
+      "id": "e40ff683-807e-428f-8d11-341d8f8f8b11",
+      "search_id": "e40ff683-807e-428f-8d11-341d8f8f8b11",
+      "user_id": "296195394",
+      "name": "peugeot_301",
+      "link": "https://www.yad2.co.il/vehicles/cars?manufacturer=46,38&model=10662,10525&year=2016--1&engineval=1500--1&gearBox=102",
+      "is_initial_scan_complete": true,
+      "is_small_search": true,
+      "total_items": 8,
+      "exclude_commercial": false,
+      "last_item_ids": []
+    }
+  ],
+  "batch_index": 99,
+  "send_notification": true
+}

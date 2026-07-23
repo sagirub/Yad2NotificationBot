@@ -49,6 +49,11 @@ BROWSER_HEADERS = {
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
+class _Blocked403(Exception):
+    """Internal sentinel: legacy HTTP fetch returned 403 (blocked)."""
+    pass
+
+
 def extract_datetime_from_image_url(image_url: str) -> Optional[datetime]:
     """
     Extract creation datetime from Yad2 image URL.
@@ -136,12 +141,25 @@ class Yad2Item:
     street: Optional[str] = None
     neighborhood: Optional[str] = None
     # Common fields
-    ad_type: str = "private"  # adType field from Yad2 (commercial = dealer, private = individual)
+    ad_type: str = "private"  # adType field from Yad2 (NOTE: not reliable for private/dealer distinction)
     feed_source: str = "private"  # Which feed section the item came from
     category_id: Optional[int] = None  # 1=vehicles, 2=realestate, etc.
     created_at: Optional[datetime] = None  # Extracted from image URL or item detail page
     created_at_source: str = "unknown"  # "image_url", "api", or "unknown"
     raw_data: Dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def is_dealer(self) -> bool:
+        """
+        Check if this item is from a dealer (not a private seller).
+        
+        Uses the presence of 'agencyName' in the customer object as the indicator.
+        This is more reliable than adType, which Yad2 sets to "commercial" for
+        many private seller items too. The agencyName field matches Yad2's
+        client-side ownerID=1 filter (private sellers only).
+        """
+        customer = self.raw_data.get("customer", {})
+        return bool(customer.get("agencyName"))
     
     @classmethod
     def from_next_data(cls, item_data: dict, feed_source: str = "private") -> Optional["Yad2Item"]:
@@ -361,6 +379,53 @@ class Yad2Parser:
         self.track_stats = track_stats
         self.reset_stats()
     
+    # Client-side-only URL parameters that Yad2's server-side rendering ignores.
+    # These cause __NEXT_DATA__ to return 0 items when present in the URL.
+    # They are applied by Yad2's JavaScript on the client side only.
+    CLIENT_SIDE_PARAMS = {
+        "priceOnly",    # Filter: only show items with price
+        "imgOnly",      # Filter: only show items with images
+        "ownerID",      # Filter: only show private sellers (not dealers)
+        "Order",        # Sort order (client-side sorting)
+        "page",         # Page number (we handle pagination ourselves)
+    }
+    
+    def _sanitize_url(self, url: str) -> str:
+        """
+        Remove client-side-only parameters from a Yad2 URL.
+        
+        Yad2's server-side rendering (__NEXT_DATA__) ignores certain parameters
+        that are only processed by client-side JavaScript. If these parameters
+        are present in the URL, the server returns 0 items.
+        
+        Args:
+            url: The Yad2 search URL
+            
+        Returns:
+            Sanitized URL with client-side-only parameters removed
+        """
+        parsed = parse.urlparse(url)
+        params = parse.parse_qs(parsed.query, keep_blank_values=True)
+        
+        # Remove client-side-only parameters
+        removed = []
+        for param in self.CLIENT_SIDE_PARAMS:
+            if param in params:
+                removed.append(f"{param}={params[param][0]}")
+                del params[param]
+        
+        if removed:
+            # Rebuild the URL without the removed parameters
+            new_query = parse.urlencode(params, doseq=True)
+            sanitized = parse.urlunparse((
+                parsed.scheme, parsed.netloc, parsed.path,
+                parsed.params, new_query, parsed.fragment
+            ))
+            logger.info(f"Sanitized URL: removed client-side params [{', '.join(removed)}]")
+            return sanitized
+        
+        return url
+    
     def reset_session(self):
         """
         Create a fresh HTTP session, discarding any cookies/state from the old one.
@@ -427,6 +492,37 @@ class Yad2Parser:
         result = self.get_search_result(search_url, retry_count)
         return result.items
     
+    def _fetch_page_html(self, url: str) -> str:
+        """
+        Fetch fully-rendered HTML for a URL.
+
+        Uses CloakBrowser (stealth Chromium) when USE_CLOAKBROWSER is enabled —
+        this defeats Yad2's fingerprint-based bot protection even from AWS IPs.
+        Otherwise falls back to the legacy requests-based session.
+
+        Returns the HTML string. Raises on hard failures (caller handles retries).
+        """
+        from src.yad2 import browser_fetcher
+
+        # Guard against orphaned/broken search records with a missing link.
+        # Without this, an empty URL reaches page.goto() and raises a confusing
+        # "Frame.goto() missing 1 required positional argument: 'url'" plus a
+        # wasted browser launch + retry.
+        if not url or not str(url).strip():
+            raise ValueError("Cannot fetch page: search URL is empty or missing")
+
+        self._wait_for_rate_limit()
+
+        if browser_fetcher.is_enabled():
+            return browser_fetcher.fetch_html(url, timeout_ms=self.timeout * 1000)
+
+        # Legacy path: plain HTTP. Raises on 403 via a sentinel the caller checks.
+        response = self.session.get(url, timeout=self.timeout)
+        if response.status_code == 403:
+            raise _Blocked403()
+        response.raise_for_status()
+        return response.text
+
     def get_search_result(self, search_url: str, retry_count: int = 0) -> SearchResult:
         """
         Fetch items and metadata from a Yad2 search URL with retry on blocking.
@@ -438,40 +534,33 @@ class Yad2Parser:
         Returns:
             SearchResult with items and total_results count
         """
+        # Sanitize URL on first attempt (not on retries, URL is already clean)
+        if retry_count == 0:
+            search_url = self._sanitize_url(search_url)
+        
         logger.info(f"Fetching items from: {search_url}" + (f" (retry {retry_count})" if retry_count > 0 else ""))
         
         try:
-            # Wait for rate limit before making request
-            self._wait_for_rate_limit()
+            # Fetch the HTML page (CloakBrowser or legacy requests)
+            try:
+                html = self._fetch_page_html(search_url)
+            except _Blocked403:
+                logger.warning(
+                    f"Request blocked with HTTP 403 Forbidden "
+                    f"(attempt {retry_count + 1}/{self.max_retries + 1})"
+                )
+                return self._handle_blocked_request(search_url, retry_count)
             
-            # Fetch the HTML page
-            response = self.session.get(search_url, timeout=self.timeout)
-            response.raise_for_status()
-            
-            # Check for bot protection
-            if self._is_blocked(response.text):
-                logger.warning(f"Request blocked by bot protection (attempt {retry_count + 1}/{self.max_retries + 1})")
-                
-                # Retry with exponential backoff if we haven't exceeded max retries
-                if retry_count < self.max_retries:
-                    # Calculate delay: base_delay * 2^retry_count (e.g., 2s, 4s, 8s)
-                    delay = self.retry_base_delay * (2 ** retry_count)
-                    logger.info(f"Retrying in {delay:.1f}s...")
-                    time.sleep(delay)
-                    
-                    if self.track_stats:
-                        self.stats["search_requests_retried"] += 1
-                    
-                    # Retry the request
-                    return self.get_search_result(search_url, retry_count + 1)
-                else:
-                    logger.error(f"Max retries ({self.max_retries}) exceeded, giving up")
-                    if self.track_stats:
-                        self.stats["search_requests_blocked"] += 1
-                    return SearchResult(items=[])
+            # Check for bot protection in HTML content
+            if self._is_blocked(html):
+                logger.warning(
+                    f"Request blocked by bot protection in HTML "
+                    f"(attempt {retry_count + 1}/{self.max_retries + 1})"
+                )
+                return self._handle_blocked_request(search_url, retry_count)
             
             # Extract __NEXT_DATA__
-            next_data = self._extract_next_data(response.text)
+            next_data = self._extract_next_data(html)
             if not next_data:
                 logger.error("Could not find __NEXT_DATA__ in page")
                 if self.track_stats:
@@ -496,6 +585,40 @@ class Yad2Parser:
             logger.error(f"Error fetching items: {e}")
             if self.track_stats:
                 self.stats["search_requests_failed"] += 1
+            return SearchResult(items=[])
+    
+    def _handle_blocked_request(self, search_url: str, retry_count: int) -> SearchResult:
+        """
+        Handle a blocked request with retry logic and session reset.
+        
+        When a request is blocked (HTTP 403 or bot protection in HTML),
+        this method handles retry with exponential backoff and session reset.
+        
+        Args:
+            search_url: The URL that was blocked
+            retry_count: Current retry attempt number
+            
+        Returns:
+            SearchResult from retry, or empty SearchResult if max retries exceeded
+        """
+        if retry_count < self.max_retries:
+            # Reset session to clear any flagged cookies/state
+            self.reset_session()
+            
+            # Calculate delay: base_delay * 2^retry_count (e.g., 2s, 4s, 8s)
+            delay = self.retry_base_delay * (2 ** retry_count)
+            logger.info(f"Retrying in {delay:.1f}s (after session reset)...")
+            time.sleep(delay)
+            
+            if self.track_stats:
+                self.stats["search_requests_retried"] += 1
+            
+            # Retry the request
+            return self.get_search_result(search_url, retry_count + 1)
+        else:
+            logger.error(f"Max retries ({self.max_retries}) exceeded, giving up")
+            if self.track_stats:
+                self.stats["search_requests_blocked"] += 1
             return SearchResult(items=[])
     
     def get_items_paginated(self, search_url: str, max_pages: int = 3) -> List[Yad2Item]:
@@ -560,7 +683,16 @@ class Yad2Parser:
         return {item.id for item in items}
     
     def _is_blocked(self, html: str) -> bool:
-        """Check if the response indicates bot protection."""
+        """
+        Check if the response indicates bot protection.
+
+        Real Yad2 pages embed __NEXT_DATA__ with listing data. A fully-rendered
+        browser page can legitimately contain words like "blocked"/"captcha" in
+        unrelated script blobs, so if __NEXT_DATA__ is present we treat the page
+        as genuine (avoids false positives when using CloakBrowser).
+        """
+        if '__NEXT_DATA__' in html:
+            return False
         html_lower = html.lower()
         blocked_indicators = [
             "captcha",
@@ -726,19 +858,22 @@ class Yad2Parser:
         logger.debug(f"Fetching item details from: {item_url}")
         
         try:
-            # Wait for rate limit before making request
-            self._wait_for_rate_limit()
-            
-            response = self.session.get(item_url, timeout=self.timeout)
-            response.raise_for_status()
+            # Fetch item HTML (CloakBrowser or legacy requests)
+            try:
+                item_html = self._fetch_page_html(item_url)
+            except _Blocked403:
+                logger.warning(f"Blocked (403) when fetching item {item_id}")
+                if self.track_stats:
+                    self.stats["item_requests_blocked"] += 1
+                return None
             
             # Log response details for debugging
-            content_length = len(response.text)
-            has_next_data = "__NEXT_DATA__" in response.text
-            logger.info(f"Item {item_id}: status={response.status_code}, content_length={content_length}, has_next_data={has_next_data}")
+            content_length = len(item_html)
+            has_next_data = "__NEXT_DATA__" in item_html
+            logger.info(f"Item {item_id}: content_length={content_length}, has_next_data={has_next_data}")
             
             # Check for various types of blocks
-            if self._is_blocked(response.text):
+            if self._is_blocked(item_html):
                 logger.warning(f"Blocked when fetching item {item_id}")
                 if self.track_stats:
                     self.stats["item_requests_blocked"] += 1
@@ -747,12 +882,12 @@ class Yad2Parser:
             # Check for redirect/challenge page (short response without __NEXT_DATA__)
             if content_length < 5000 and not has_next_data:
                 # Log first 500 chars to understand what we got
-                logger.warning(f"Item {item_id}: Got short response without __NEXT_DATA__, likely a challenge page. First 500 chars: {response.text[:500]}")
+                logger.warning(f"Item {item_id}: Got short response without __NEXT_DATA__, likely a challenge page. First 500 chars: {item_html[:500]}")
                 if self.track_stats:
                     self.stats["item_requests_blocked"] += 1
                 return None
             
-            next_data = self._extract_next_data(response.text)
+            next_data = self._extract_next_data(item_html)
             if not next_data:
                 logger.warning(f"No __NEXT_DATA__ in item page {item_id}")
                 if self.track_stats:

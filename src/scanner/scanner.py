@@ -338,19 +338,23 @@ class ItemScanner:
         # otherwise filtered-out items would be re-detected as "new" every scan
         all_fetched_item_ids = {item.id for item in items}
         
-        # Filter out commercial items if requested (only affects notifications)
-        # Uses feed_source (which section the item appears in) rather than ad_type,
-        # because ad_type="commercial" just means the seller is a dealer, while
-        # feed_source="commercial" means it's a promoted dealer listing section.
-        # Items in the "private" feed section can still be from dealers (ad_type=commercial)
-        # but they appear as regular listings on the website.
+        # Filter out commercial/dealer items if requested (only affects notifications)
+        # Filters by BOTH:
+        # 1. feed_source: items from commercial/agency/leadingBroker feed sections
+        # 2. is_dealer: items with customer.agencyName (dealer listings in private section)
+        # Note: adType="commercial" is NOT reliable — Yad2 marks many private items as commercial.
+        # The presence of agencyName in the customer object is the true dealer indicator,
+        # matching Yad2's client-side "ownerID=1" (private sellers only) filter.
         if exclude_commercial:
             original_count = len(items)
-            items = [item for item in items if item.feed_source not in ("commercial",)]
+            items = [
+                item for item in items
+                if item.feed_source not in ("commercial",) and not item.is_dealer
+            ]
             filtered_count = original_count - len(items)
             if filtered_count > 0:
                 logger.info(
-                    f"Search '{search_name}': filtered out {filtered_count} commercial-section items "
+                    f"Search '{search_name}': filtered out {filtered_count} commercial/dealer items "
                     f"({original_count} -> {len(items)})"
                 )
         

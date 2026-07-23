@@ -1,0 +1,64 @@
+# Container-image Lambda for the Yad2 scanner WORKER.
+#
+# The worker is the only component that scrapes Yad2, so it runs CloakBrowser
+# (stealth Chromium) to defeat Yad2's fingerprint-based bot protection — proven
+# to work even from AWS IPs (no residential proxy needed).
+#
+# The webhook + orchestrator remain lightweight zip Lambdas (see serverless.yml).
+FROM public.ecr.aws/lambda/python:3.12
+
+# --- Chromium runtime shared libraries (Amazon Linux 2023 / dnf) ---
+# CloakBrowser ships its own Chromium binary but needs these OS libs to run it.
+RUN dnf install -y \
+        nss \
+        nspr \
+        atk \
+        at-spi2-atk \
+        at-spi2-core \
+        cups-libs \
+        libdrm \
+        libgbm \
+        libxkbcommon \
+        libX11 \
+        libXcomposite \
+        libXdamage \
+        libXext \
+        libXfixes \
+        libXrandr \
+        libxshmfence \
+        pango \
+        cairo \
+        alsa-lib \
+        dbus-libs \
+        expat \
+        libxcb \
+        && dnf clean all
+
+# --- Python dependencies (app + cloakbrowser) ---
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt \
+    && pip install --no-cache-dir cloakbrowser
+
+# --- Pre-download CloakBrowser's Chromium at build time (avoids cold-start DL) ---
+# /opt is writable at build time (read-only at runtime; we only write here now).
+RUN mkdir -p /opt/.cloakbrowser && HOME=/opt python -m cloakbrowser install
+
+# --- Runtime writable paths: Lambda only allows writes under /tmp ---
+# Point HOME/XDG/fontconfig at /tmp so Chromium is stable at runtime.
+#
+# CLOAKBROWSER_BINARY_PATH pins the Chromium binary we baked into /opt at build
+# time, so CloakBrowser does NOT re-download it at runtime (which previously
+# filled /tmp -> "No space left on device").
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp/.cache \
+    XDG_CONFIG_HOME=/tmp/.config \
+    XDG_DATA_HOME=/tmp/.local/share \
+    XDG_RUNTIME_DIR=/tmp/.run \
+    CLOAKBROWSER_BINARY_PATH=/opt/.cloakbrowser/chromium-146.0.7680.177.5/chrome \
+    USE_CLOAKBROWSER=1
+
+# --- Application code ---
+COPY src/ ${LAMBDA_TASK_ROOT}/src/
+
+# Worker Lambda handler.
+CMD ["src.scanner.worker.handler"]

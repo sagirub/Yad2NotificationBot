@@ -30,7 +30,7 @@ provider:
     # Orchestrator settings - budget-based batching
     # Max estimated HTTP requests per worker Lambda (to avoid Yad2 bot protection)
     MAX_REQUESTS_PER_WORKER: "5"
-    WORKER_FUNCTION_NAME: ${self:service}-${self:provider.stage}-searchWorker
+    WORKER_FUNCTION_NAME: ${self:service}-${self:provider.stage}-searchWorkerImg
 
   iam:
     role:
@@ -63,7 +63,7 @@ provider:
           Action:
             - lambda:InvokeFunction
           Resource:
-            - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-searchWorker"
+            - "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-searchWorkerImg"
 
 functions:
   # Telegram webhook handler
@@ -88,7 +88,7 @@ functions:
   searchOrchestrator:
     handler: src.scanner.orchestrator.handler
     memorySize: 256
-    timeout: 120  # Increased to wait for workers synchronously
+    timeout: 600  # Waits for all container-worker batches synchronously (container cold starts ~20-28s each)
     events:
       # Run every 30 minutes, but only during hours 3-21 UTC (6 AM - midnight Israel)
       # Cron format: minute hour day-of-month month day-of-week year
@@ -97,12 +97,16 @@ functions:
           enabled: true
           description: "Orchestrate Yad2 search scanning every 30 minutes (6 AM - midnight Israel time)"
 
-  # Search worker - invoked by orchestrator with a batch of searches
-  # Each worker gets a different IP address to avoid rate limiting
-  searchWorker:
-    handler: src.scanner.worker.handler
-    memorySize: 512
+  # Search worker - invoked by orchestrator with a batch of searches.
+  # Runs as a CONTAINER IMAGE (CloakBrowser + Chromium) to bypass Yad2 bot
+  # protection. Higher memory + ephemeral storage are required for Chromium.
+  searchWorkerImg:
+    # Pre-built container image (built & pushed manually via build_worker_image.sh).
+    # Pass the image URI at deploy time: WORKER_IMAGE_URI=<ecr-uri>:<tag>
+    image: ${env:WORKER_IMAGE_URI}
+    memorySize: 2048
     timeout: 300
+    ephemeralStorageSize: 2048  # /tmp size in MB (Serverless v3 key)
     # No events - invoked by orchestrator
 
 plugins:

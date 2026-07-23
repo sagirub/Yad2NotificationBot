@@ -469,7 +469,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             f"{aggregated_stats['items_found']} new items, {total_duration:.1f}s total"
         )
         
-        # Send centralized admin notification
+        # Send urgent admin alert if scanner appears fully blocked
+        # This is sent as a separate, prominent message BEFORE the regular summary
+        # so it's impossible to miss when Yad2 blocks the entire AWS region.
+        if settings.ADMIN_CHAT_ID:
+            try:
+                total_requests = (
+                    aggregated_stats['requests_success']
+                    + aggregated_stats['requests_blocked']
+                    + aggregated_stats['requests_failed']
+                )
+                # Critical: 100% blocked AND we tried at least some requests
+                if total_requests > 0 and aggregated_stats['requests_blocked'] == total_requests:
+                    region = os.environ.get('AWS_REGION_NAME') or os.environ.get('AWS_REGION', 'unknown')
+                    urgent_alert = (
+                        "🚨🚨🚨 *SCANNER COMPLETELY BLOCKED* 🚨🚨🚨\n\n"
+                        f"All `{total_requests}` requests blocked by Yad2!\n"
+                        f"Region: `{region}`\n"
+                        f"Searches affected: `{aggregated_stats['searches_scanned']}`\n"
+                        f"Batches: `{aggregated_stats['successful_batches']}/{aggregated_stats['batch_count']}` workers ran\n\n"
+                        "⚠️ *Action required:*\n"
+                        "Yad2 likely added this AWS region to their IP blocklist.\n"
+                        "Migration to a different region is needed.\n\n"
+                        "_This alert is sent every run until resolved._"
+                    )
+                    notifier_alert = TelegramNotifier()
+                    asyncio.get_event_loop().run_until_complete(
+                        notifier_alert.send_admin_message(urgent_alert)
+                    )
+                    logger.warning(f"CRITICAL: Scanner fully blocked in region {region}! Sent urgent admin alert.")
+            except Exception as alert_error:
+                logger.error(f"Failed to send urgent blocked alert: {alert_error}")
+        
+        # Send centralized admin notification (regular summary)
         if settings.ADMIN_CHAT_ID and settings.SEND_RUN_SUMMARY:
             try:
                 notifier = TelegramNotifier()

@@ -259,6 +259,114 @@ python scripts/set_webhook.py
 
 ---
 
+## 🕵️ Scanner Architecture & Anti-Bot (CloakBrowser)
+
+### The problem
+Yad2's bot protection (Radware/ShieldSquare) blocks plain HTTP requests coming
+from AWS IP ranges. Testing showed all AWS regions are blocked at the IP level,
+so region migration is not a viable fix. The protection is **fingerprint-based**,
+not purely IP-based — a real stealth browser passes the challenge even from an
+AWS Lambda IP (no residential proxy required).
+
+The solution is [CloakBrowser](https://cloakbrowser.dev) — a patched, stealth
+Chromium (Playwright drop-in). Because Chromium + its libraries far exceed
+Lambda's 250 MB zip limit, only the search worker runs as a container-image
+Lambda (up to 10 GB, pulled from ECR). Everything else (webhook, orchestrator)
+stays a normal zip Lambda.
+
+### Orchestrator to Worker (container) flow
+```
+        every 30 min (cron, 6 AM-midnight Israel)
+                          |
+                          v
+        +----------------------------------+
+        |  searchOrchestrator  (zip Lambda)|
+        |  - reads all searches from DDB   |
+        |  - splits into budget batches    |
+        |    (<= MAX_REQUESTS_PER_WORKER)  |
+        |  - invokes workers synchronously |
+        |  - aggregates + sends 1 summary  |
+        +---------------+------------------+
+                        |  invoke (RequestResponse), per batch
+                        v
+        +----------------------------------+
+        | searchWorkerImg (CONTAINER Lambda)|
+        |  - CloakBrowser + baked Chromium |
+        |  - fetches each search page      |
+        |  - parses __NEXT_DATA__ listings |
+        |  - detects new items (ID bank)   |
+        |  - optional: notify user         |
+        +---------------+------------------+
+                        |
+              +---------+---------+
+              v                   v
+        +-----------+       +-----------+
+        | Yad2.co.il|       | DynamoDB  |
+        | (stealth) |       | searches  |
+        +-----------+       |  + stats  |
+                            +-----------+
+```
+
+### How the browser fetch works
+- [`src/yad2/browser_fetcher.py`](src/yad2/browser_fetcher.py) wraps CloakBrowser
+  behind a simple `fetch_html(url)`. The scanner runs inside an asyncio loop, but
+  Playwright's sync API cannot run on a running event loop, so all browser work
+  runs on a single dedicated background thread that owns the browser instance.
+  `fetch_html` dispatches to that thread and blocks for the result.
+- [`src/yad2/parser.py`](src/yad2/parser.py) routes page fetches through the
+  browser when `USE_CLOAKBROWSER=1`, otherwise falls back to plain HTTP. It also
+  fails fast on an empty/missing search URL (guards against orphaned records).
+
+### Container image build (Dockerfile.worker)
+- Base: `public.ecr.aws/lambda/python:3.12`
+- Installs Chromium's system libraries + `cloakbrowser`
+- Bakes Chromium at build time and sets `CLOAKBROWSER_BINARY_PATH` so the runtime
+  never re-downloads it (Lambda's `/tmp` would run out of space).
+- Points all cache/config dirs (`HOME`, `XDG_*`) at `/tmp` (only writable path).
+
+### Deploying the worker image (manual build + push)
+Serverless-managed image builds stall behind corporate proxies, so the worker
+image is built and pushed manually, then referenced via `WORKER_IMAGE_URI`.
+
+Run the build/push with the corporate VPN/proxy OFF — the proxy's TLS
+interception breaks `dnf` and ECR pushes.
+
+```bash
+# 1) Build + push the worker image (VPN OFF)
+./build_worker_image.sh   # builds & pushes to the yad2-worker ECR repo
+# (uses docker build --platform linux/amd64 --provenance=false --output type=docker
+#  -f Dockerfile.worker ; the provenance/output flags avoid an OCI/attestation
+#  manifest that Lambda rejects)
+
+# 2) Deploy the stack referencing the pre-built image (VPN can be ON)
+WORKER_IMAGE_URI=<acct>.dkr.ecr.<region>.amazonaws.com/yad2-worker:latest \
+TELEGRAM_BOT_TOKEN=... ADMIN_CHAT_ID=... ADMIN_BOT_TOKEN=... \
+npx serverless deploy --stage prod --region eu-west-2
+```
+
+The worker is defined in [`serverless.yml`](serverless.yml) as `searchWorkerImg`
+with `image: ${env:WORKER_IMAGE_URI}`, `memorySize: 2048`, `timeout: 300`, and
+`ephemeralStorageSize: 2048`. The orchestrator timeout is `600` so all batches
+finish (container cold starts are ~20-28s each).
+
+Zip to image note: switching a custom-named function from zip to image forces a
+CloudFormation replacement it cannot do in-place. The worker was therefore given
+a new logical key (`searchWorkerImg`) so CloudFormation creates it fresh; the
+orchestrator's `WORKER_FUNCTION_NAME` and the IAM invoke ARN reference the same
+new name.
+
+### Relevant environment variables
+| Var | Where | Purpose |
+|-----|-------|---------|
+| `USE_CLOAKBROWSER` | worker image | `1` enables the stealth-browser fetch path |
+| `CLOAKBROWSER_BINARY_PATH` | worker image | Points to the baked Chromium (skips runtime download) |
+| `WORKER_IMAGE_URI` | deploy env | ECR image URI the worker Lambda runs |
+| `WORKER_FUNCTION_NAME` | orchestrator | Name of the worker Lambda to invoke |
+| `MAX_REQUESTS_PER_WORKER` | orchestrator | Batch budget so each worker stays under Yad2 limits |
+| `CLOAK_PROXY` | worker (optional) | Residential proxy, if ever needed — not required for AWS |
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -269,21 +377,30 @@ yad2-notification-bot/
 │   │   ├── main.py            # FastAPI app
 │   │   ├── webhook.py         # Telegram webhook handler
 │   │   └── lambda_entry.py    # AWS Lambda entry point
-│   └── bot/
-│       ├── bot_instance.py    # Bot & Dispatcher
-│       ├── router.py          # Main router
-│       ├── states.py          # FSM states
-│       ├── run_polling.py     # Local dev entry point
-│       ├── handlers/          # Message handlers
-│       ├── keyboards/         # Inline keyboards
-│       └── db/                # Database layer
+│   ├── bot/
+│   │   ├── bot_instance.py    # Bot & Dispatcher
+│   │   ├── router.py          # Main router
+│   │   ├── states.py          # FSM states
+│   │   ├── run_polling.py     # Local dev entry point
+│   │   ├── handlers/          # Message handlers
+│   │   ├── keyboards/         # Inline keyboards
+│   │   └── db/                # DynamoDB data layer
+│   ├── scanner/              # Search-scanning pipeline
+│   │   ├── orchestrator.py    # Cron entry: batches + invokes workers, sends summary
+│   │   ├── worker.py          # Worker Lambda handler (runs in container image)
+│   │   ├── scanner.py         # Core scan logic (new-item detection)
+│   │   ├── notifier.py        # Telegram notifications
+│   │   └── stats.py           # Per-run stats + alerts
+│   └── yad2/                 # Yad2 access layer
+│       ├── parser.py          # Page fetch + __NEXT_DATA__ parsing
+│       └── browser_fetcher.py # CloakBrowser (stealth Chromium) fetcher
 ├── scripts/
-│   └── set_webhook.py         # Webhook management
-├── docs/
-│   └── aws-iam-policy.json    # Required AWS permissions
-├── .github/workflows/
-│   └── deploy.yml             # GitHub Actions CI/CD
-├── serverless.yml             # AWS deployment config
+│   ├── set_webhook.py         # Webhook management
+│   ├── worker_test_payload.json      # Sample worker invoke payload
+│   └── worker_test_nonotif.json      # Worker test payload (no notifications)
+├── Dockerfile.worker          # Container image for the CloakBrowser worker
+├── build_worker_image.sh      # Build + push the worker image to ECR
+├── serverless.yml             # AWS deployment config (mixed zip + container)
 ├── package.json               # Node.js dependencies
 ├── pyproject.toml             # Python dependencies
 ├── .env                       # Environment variables (git ignored)

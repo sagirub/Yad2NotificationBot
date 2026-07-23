@@ -90,3 +90,14 @@ dmypy.json
 
 # docs
 docs/_build/
+
+# Local scratch: one-off run outputs, diagnostics dumps, and DB backups
+scripts/*_output.json
+scripts/*_output_*.json
+scripts/*_result.json
+scripts/region_test_*.json
+scripts/test_us_*.json
+scripts/test_eu_*.json
+scripts/*_test_output.json
+scripts/dynamodb_*_backup*.json
+scripts/prod_*_verify*.json
